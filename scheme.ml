@@ -94,7 +94,8 @@ let read_character in_channel =
       Character 'n'
     end
     | c -> Character c
-  with End_of_file -> (prerr_string "incomplete character literal\n"; raise Exit) ;;
+  with End_of_file ->
+    (prerr_string "incomplete character literal\n"; raise Exit) ;;
 
 let read_string in_channel =
   let buf = Buffer.create 80
@@ -148,22 +149,30 @@ let eval exp = exp ;;
 let is_false obj =
   obj = Boolean false ;;
 
+let write_string str =
+  let dq = "\"".[0]
+  in begin
+    print_char dq;
+    String.iter
+      (fun c ->
+        match c with
+          '\n' -> print_string "\\n"
+        | '\\' -> print_string "\\\\"
+        | c when c = dq -> print_string "\\\""
+        | c -> print_char c)
+      str;
+    print_char dq
+  end ;;
+
 let write obj =
   match obj with
   | Fixnum num -> Printf.printf "%d" num
-  | Boolean _ -> Printf.printf "#%c" (if is_false obj then 'f' else 't')
+  | Boolean true -> print_string "#t"
+  | Boolean false -> print_string "#f"
   | Character '\n' -> print_string "#\\newline"
   | Character ' ' -> print_string "#\\space"
   | Character c -> Printf.printf "#\\%c" c
-  | String str -> begin
-      print_char "\"".[0];
-      String.iter (fun c -> match c with
-        '\n' -> print_string "\\n"
-      | '\\' -> print_string "\\\\"
-      | c when c = "\"".[0] -> print_string "\\\""
-      | c -> print_char c) str;
-      print_char "\"".[0]
-  end ;;
+  | String str -> write_string str ;;
 
 let main () =
   begin
