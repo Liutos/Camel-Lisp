@@ -94,6 +94,7 @@ let read_character in_channel =
 
 let rec read in_channel =
   try
+    eat_whitespace in_channel;
     match (getc in_channel) with
     | ' ' | '\n' | '\r' | '\t' -> read in_channel
     | '#' -> begin
@@ -134,6 +135,9 @@ let write obj =
   match obj with
   | Fixnum num -> Printf.printf "%d" num
   | Boolean _ -> Printf.printf "#%c" (if is_false obj then 'f' else 't')
+  | Character '\n' -> print_string "#\\newline"
+  | Character ' ' -> print_string "#\\space"
+  | Character c -> Printf.printf "#\\%c" c
   | _ -> (prerr_string "cannot write unknown type\n"; exit 1) ;;
 
 let main () =
