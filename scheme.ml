@@ -96,23 +96,24 @@ let rec read in_channel =
   try
     match (getc in_channel) with
     | ' ' | '\n' | '\r' | '\t' -> read in_channel
-    | '#' -> match (getc in_channel) with
-      | 't' -> Boolean true
-      | 'f' -> Boolean false
-      | '\\' -> read_character in_channel
-      | _ -> (prerr_string "Unknown boolean literal\n"; exit 1)
-    | c when isdigit c || (c = '-' && isdigit (peek in_channel)) ->
-        let sign = ref 1
+    | '#' -> begin
+        match (getc in_channel) with
+        | 't' -> Boolean true
+        | 'f' -> Boolean false
+        | '\\' -> read_character in_channel
+        | _ -> (prerr_string "Unknown boolean literal\n"; exit 1)
+    end
+    | c when isdigit c || c = '-' ->
+        let sign = if c = '-' then -1 else (ungetc c in_channel; -1)
         and num = ref 0
         in begin
-          if c = '-' then sign := -1 else ungetc c in_channel;
           let c = ref (getc in_channel)
           in begin
             while isdigit !c do
               num := !num * 10 + (Char.code !c) - (Char.code '0');
               c := getc in_channel
             done;
-            num := !num * !sign;
+            num := !num * sign;
             if is_delimiter !c
             then (ungetc !c in_channel; Fixnum !num)
             else begin
@@ -121,7 +122,7 @@ let rec read in_channel =
             end
           end
         end
-    | c -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" c; exit 1)
+        | ch -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" ch; exit 1)
   with End_of_file -> (prerr_string "read illegal state\n"; exit 1) ;;
 
 let eval exp = exp ;;
