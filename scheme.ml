@@ -52,17 +52,54 @@ let is_delimiter c =
   isspace c || c = '(' || c = ')' || c = "\"".[0] || c = ';' ;;
 
 type lisp_object =
-    Fixnum of int
+  | Fixnum of int
+  | Character of char
   | Boolean of bool ;;
+
+let eat_expected_string in_channel str =
+  let aux c =
+    if c != (getc in_channel)
+    then (Printf.fprintf stderr "unexpcted character '%c'\n" c; raise Exit)
+  in String.iter aux str ;;
+
+let peek_expected_delimiter in_channel =
+  let c = peek in_channel
+  in if not (is_delimiter c) then failwith "character not followed by delimiter\n" ;;
+
+let read_character in_channel =
+  try
+    match (getc in_channel) with
+    | 's' -> if 'p' = (peek in_channel)
+    then begin
+      eat_expected_string in_channel "pace";
+      peek_expected_delimiter in_channel;
+      Character ' '
+    end
+    else begin
+      peek_expected_delimiter in_channel;
+      Character 's'
+    end
+    | 'n' -> if 'e' = (peek in_channel)
+    then begin
+      eat_expected_string in_channel "ewline";
+      peek_expected_delimiter in_channel;
+      Character '\n'
+    end
+    else begin
+      peek_expected_delimiter in_channel;
+      Character 'n'
+    end
+    | c -> Character c
+  with End_of_file -> (prerr_string "incomplete character literal\n"; raise Exit) ;;
 
 let rec read in_channel =
   try
-    (* eat_whitespace in_channel; *)
     match (getc in_channel) with
-    | c1 when isspace c1 -> read in_channel
+    | ' ' | '\n' | '\r' | '\t' -> read in_channel
     | '#' -> match (getc in_channel) with
       | 't' -> Boolean true
       | 'f' -> Boolean false
+      | '\\' -> read_character in_channel
       | _ -> (prerr_string "Unknown boolean literal\n"; exit 1)
     | c when isdigit c || (c = '-' && isdigit (peek in_channel)) ->
         let sign = ref 1
@@ -84,7 +121,7 @@ let rec read in_channel =
             end
           end
         end
-    | ch -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" ch; exit 1)
+    | c -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" c; exit 1)
   with End_of_file -> (prerr_string "read illegal state\n"; exit 1) ;;
 
 let eval exp = exp ;;
