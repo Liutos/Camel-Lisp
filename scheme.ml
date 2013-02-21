@@ -109,6 +109,23 @@ let read_string in_channel =
     String (Buffer.contents buf)
   end ;;
 
+let read_fixnum in_channel c =
+  let sign = if c = '-' then -1 else (ungetc c in_channel; 1)
+  and num = ref 0
+  in begin
+    let c = ref (getc in_channel)
+    in begin
+      while isdigit !c do
+        num := !num * 10 + (Char.code !c) - (Char.code '0');
+        c := getc in_channel
+      done;
+      num := !num * sign;
+      if is_delimiter !c
+      then (ungetc !c in_channel; Fixnum !num)
+      else (prerr_string "number not followed by delimiter\n"; raise Exit)
+    end
+  end ;;
+
 let rec read in_channel =
   try
     eat_whitespace in_channel;
@@ -122,24 +139,7 @@ let rec read in_channel =
         | _ -> (prerr_string "Unknown boolean literal\n"; exit 1)
     end
     | c when isdigit c || (c = '-' && isdigit (peek in_channel)) ->
-        let sign = if c = '-' then -1 else (ungetc c in_channel; -1)
-        and num = ref 0
-        in begin
-          let c = ref (getc in_channel)
-          in begin
-            while isdigit !c do
-              num := !num * 10 + (Char.code !c) - (Char.code '0');
-              c := getc in_channel
-            done;
-            num := !num * sign;
-            if is_delimiter !c
-            then (ungetc !c in_channel; Fixnum !num)
-            else begin
-              prerr_string "number not followed by delimiter\n";
-              exit 1
-            end
-          end
-        end
+        read_fixnum in_channel c
     | c when c = "\"".[0] -> read_string in_channel
     | ch -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" ch; raise Exit)
   with End_of_file -> (prerr_string "read illegal state\n"; raise Exit) ;;
