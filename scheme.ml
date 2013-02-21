@@ -58,6 +58,7 @@ type lisp_object =
   | Fixnum of int
   | Character of char
   | String of string
+  | EmptyList
   | Boolean of bool ;;
 
 let eat_expected_string in_channel str =
@@ -136,11 +137,19 @@ let rec read in_channel =
         | 't' -> Boolean true
         | 'f' -> Boolean false
         | '\\' -> read_character in_channel
-        | _ -> (prerr_string "Unknown boolean literal\n"; exit 1)
+        | _ -> (prerr_string "Unknown boolean literal\n"; raise Exit)
     end
     | c when isdigit c || (c = '-' && isdigit (peek in_channel)) ->
         read_fixnum in_channel c
     | c when c = "\"".[0] -> read_string in_channel
+    | '(' -> begin
+        eat_whitespace in_channel;
+        let c = (getc in_channel)
+        in if c = ')'
+        then EmptyList
+        else (Printf.fprintf stderr "unexpected character '%c'. Expecting ')'\n" c;
+              raise Exit)
+    end
     | ch -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" ch; raise Exit)
   with End_of_file -> (prerr_string "read illegal state\n"; raise Exit) ;;
 
