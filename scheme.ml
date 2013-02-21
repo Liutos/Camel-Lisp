@@ -52,13 +52,19 @@ let is_delimiter c =
   isspace c || c = '(' || c = ')' || c = "\"".[0] || c = ';' ;;
 
 type lisp_object =
-    Fixnum of int ;;
+    Fixnum of int
+  | Boolean of bool ;;
 
-let read in_channel =
-  begin
-    eat_whitespace in_channel;
+let rec read in_channel =
+  try
+    (* eat_whitespace in_channel; *)
     match (getc in_channel) with
-      c when isdigit c || (c = '-' && isdigit (peek in_channel)) ->
+    | c1 when isspace c1 -> read in_channel
+    | '#' -> match (getc in_channel) with
+      | 't' -> Boolean true
+      | 'f' -> Boolean false
+      | _ -> (prerr_string "Unknown boolean literal\n"; exit 1)
+    | c when isdigit c || (c = '-' && isdigit (peek in_channel)) ->
         let sign = ref 1
         and num = ref 0
         in begin
@@ -79,13 +85,17 @@ let read in_channel =
           end
         end
     | ch -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" ch; exit 1)
-  end ;;
+  with End_of_file -> (prerr_string "read illegal state\n"; exit 1) ;;
 
 let eval exp = exp ;;
 
+let is_false obj =
+  obj = Boolean false ;;
+
 let write obj =
   match obj with
-    Fixnum num -> Printf.printf "%d" num
+  | Fixnum num -> Printf.printf "%d" num
+  | Boolean _ -> Printf.printf "#%c" (if is_false obj then 'f' else 't')
   | _ -> (prerr_string "cannot write unknown type\n"; exit 1) ;;
 
 let main () =
