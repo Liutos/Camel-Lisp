@@ -48,12 +48,16 @@ let peek input_channel =
   let c = getc input_channel
   in (ungetc c input_channel; c) ;;
 
+let is_double_quote c =
+  c = "\"".[0] ;;
+
 let is_delimiter c =
-  isspace c || c = '(' || c = ')' || c = "\"".[0] || c = ';' ;;
+  isspace c || c = '(' || c = ')' || is_double_quote c || c = ';' ;;
 
 type lisp_object =
   | Fixnum of int
   | Character of char
+  | String of string
   | Boolean of bool ;;
 
 let eat_expected_string in_channel str =
@@ -92,6 +96,18 @@ let read_character in_channel =
     | c -> Character c
   with End_of_file -> (prerr_string "incomplete character literal\n"; raise Exit) ;;
 
+let read_string in_channel =
+  let buf = Buffer.create 80
+  and c = ref (getc in_channel)
+  in begin
+    while not (is_double_quote !c) do
+      if !c = '\\' then (c := getc in_channel; if !c = 'n' then c := '\n');
+      Buffer.add_char buf !c;
+      c := getc in_channel
+    done;
+    String (Buffer.contents buf)
+  end ;;
+
 let rec read in_channel =
   try
     eat_whitespace in_channel;
@@ -104,7 +120,7 @@ let rec read in_channel =
         | '\\' -> read_character in_channel
         | _ -> (prerr_string "Unknown boolean literal\n"; exit 1)
     end
-    | c when isdigit c || c = '-' ->
+    | c when isdigit c || (c = '-' && isdigit (peek in_channel)) ->
         let sign = if c = '-' then -1 else (ungetc c in_channel; -1)
         and num = ref 0
         in begin
@@ -123,8 +139,9 @@ let rec read in_channel =
             end
           end
         end
-        | ch -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" ch; exit 1)
-  with End_of_file -> (prerr_string "read illegal state\n"; exit 1) ;;
+    | c when c = "\"".[0] -> read_string in_channel
+    | ch -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" ch; raise Exit)
+  with End_of_file -> (prerr_string "read illegal state\n"; raise Exit) ;;
 
 let eval exp = exp ;;
 
@@ -138,7 +155,15 @@ let write obj =
   | Character '\n' -> print_string "#\\newline"
   | Character ' ' -> print_string "#\\space"
   | Character c -> Printf.printf "#\\%c" c
-  | _ -> (prerr_string "cannot write unknown type\n"; exit 1) ;;
+  | String str -> begin
+      print_char "\"".[0];
+      String.iter (fun c -> match c with
+        '\n' -> print_string "\\n"
+      | '\\' -> print_string "\\\\"
+      | c when c = "\"".[0] -> print_string "\\\""
+      | c -> print_char c) str;
+      print_char "\"".[0]
+  end ;;
 
 let main () =
   begin
