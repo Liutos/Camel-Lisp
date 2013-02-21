@@ -223,14 +223,75 @@ let is_tagged_list exp tag =
   | _ -> false ;;
 
 let is_quoted exp =
-  is_tagged_list exp "quote" ;;
+  is_tagged_list exp (make_symbol "quote") ;;
 
 let text_of_quotation = function
     Pair(_, Pair(obj, _)) -> obj
   | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
 
-let eval = function
+let empty_environment = EmptyList ;;
+
+let is_symbol = function
+    Symbol _ -> true
+  | _ -> false ;;
+
+let is_variable = is_symbol ;;
+
+let car = function
+    Pair(car, _) -> car
+  | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
+
+let cdr = function
+    Pair(_, cdr) -> cdr
+  | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
+
+let first_frame = car ;;
+
+let frame_variables = car ;;
+let frame_values = cdr ;;
+
+let rec lookup_variable_value var env =
+  match env with
+    EmptyList -> failwith "Unbound variable.\n"
+  | Pair(Pair(vars, vals), outer) -> begin
+      let rec aux vars vals =
+        match vars with
+          EmptyList -> raise Not_found
+        | Pair(first, rest) -> begin
+            if first == var
+            then car vals
+            else aux rest (cdr vals)
+        end
+        | _ -> (prerr_string "argument is not a Pair"; raise Exit)
+      in try
+        aux vars vals
+      with Not_found -> lookup_variable_value var outer
+  end
+  | _ -> (prerr_string "argument is not a environment(Pair)"; raise Exit) ;;
+
+let is_assignment exp =
+  is_tagged_list exp (make_symbol "set!") ;;
+
+(* let set_variable_value var value env = *)
+(*   match env with *)
+(*     EmptyList -> failwith "unbound variable" *)
+(*   | Pair(Pair(vars, vals), outer) -> begin *)
+(*       let rec aux vars vals = *)
+(*         match vars with *)
+(*           EmptyList -> raise Not_found *)
+(*         | Pair(first, rest) -> begin *)
+(*             if first == var *)
+(*             then  *)
+(*         end *)
+(*   end *)
+(*   | _ -> (prerr_string "argument is not a environment(Pair)"; raise Exit) ;; *)
+
+(* let eval_assignment exp env = *)
+
+let eval exp env =
+  match exp with
     exp when is_self_evaluating exp -> exp
+  | exp when is_variable exp -> lookup_variable_value exp env
   | exp when is_quoted exp -> text_of_quotation exp
   | _ -> (prerr_string "cannot eval unknown expression type\n"; raise Exit) ;;
 
