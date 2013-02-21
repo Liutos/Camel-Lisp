@@ -27,7 +27,7 @@ let isspace c =
 
 let isdigit c =
   match c with
-    '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' -> true
+    '0'..'9' -> true
   | _ -> false ;;
 
 let rec eat_whitespace input_channel =
@@ -60,7 +60,20 @@ type lisp_object =
   | String of string
   | EmptyList
   | Pair of lisp_object * lisp_object
+  | Symbol of string
   | Boolean of bool ;;
+
+let symbol_table = Hashtbl.create 20 ;;
+
+let make_symbol name =
+  try
+    Hashtbl.find symbol_table name
+  with Not_found ->
+    let symbol = Symbol name
+    in begin
+      Hashtbl.add symbol_table name symbol;
+      symbol
+    end ;;
 
 let eat_expected_string in_channel str =
   let aux c =
@@ -128,6 +141,23 @@ let read_fixnum in_channel c =
     end
   end ;;
 
+let is_initial = function
+    'a'..'z' | 'A'..'Z' | '*' | '/' | '>' | '<' | '=' | '?' | '!' -> true
+  | _ -> false ;;
+
+let read_symbol in_channel init =
+  let buf = Buffer.create 10
+  in let c = ref init
+  in begin
+    while is_initial !c || isdigit !c || !c = '+' || !c = '-' do
+      Buffer.add_char buf !c;
+      c := getc in_channel
+    done;
+    if is_delimiter !c
+    then (ungetc !c in_channel; make_symbol (Buffer.contents buf))
+    else (Printf.fprintf stderr "symbol not followed by delimiter. Found '%c'\n" !c; raise Exit)
+  end ;;
+
 (* mutually recursive *)
 let rec read_pair in_channel =
   begin
@@ -174,11 +204,12 @@ and read in_channel =
         | '\\' -> read_character in_channel
         | _ -> (prerr_string "Unknown boolean literal\n"; raise Exit)
     end
+    | '(' -> read_pair in_channel
     | c when isdigit c || (c = '-' && isdigit (peek in_channel)) ->
         read_fixnum in_channel c
-    | c when c = "\"".[0] -> read_string in_channel
-    | '(' -> read_pair in_channel
-    | ch -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" ch; raise Exit)
+    | c when is_double_quote c -> read_string in_channel
+    | c when is_initial c || ((c = '+' || c = '-') && is_delimiter (peek in_channel)) -> read_symbol in_channel c
+    | c -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" c; raise Exit)
   with End_of_file -> (prerr_string "read illegal state\n"; raise Exit) ;;
 
 let eval exp = exp ;;
@@ -222,6 +253,7 @@ and write obj =
   | Character c -> Printf.printf "#\\%c" c
   | EmptyList -> print_string "()"
   | Pair _ -> (print_char '('; write_pair obj; print_char ')')
+  | Symbol name -> print_string name
   | String str -> write_string str ;;
 
 let main () =
