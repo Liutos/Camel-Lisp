@@ -158,7 +158,7 @@ let read_symbol in_channel init =
     else (Printf.fprintf stderr "symbol not followed by delimiter. Found '%c'\n" !c; raise Exit)
   end ;;
 
-(* mutually recursive *)
+(* mutually recursive: read_pair <-> read *)
 let rec read_pair in_channel =
   begin
     eat_whitespace in_channel;
@@ -212,6 +212,10 @@ and read in_channel =
     | c -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" c; raise Exit)
   with End_of_file -> (prerr_string "read illegal state\n"; raise Exit) ;;
 
+let is_self_evaluating = function
+    Pair(_, _) | Symbol _ -> false
+  | _ -> true ;;
+
 let eval exp = exp ;;
 
 let is_false obj =
@@ -232,7 +236,7 @@ let write_string str =
     print_char dq
   end ;;
 
-(* mutually recursive *)
+(* mutually recursive: write_pair <-> write *)
 let rec write_pair = function
     Pair(car, cdr) -> begin
       write car;
