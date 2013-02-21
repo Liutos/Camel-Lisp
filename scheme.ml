@@ -181,6 +181,7 @@ let write obj =
   | Character '\n' -> print_string "#\\newline"
   | Character ' ' -> print_string "#\\space"
   | Character c -> Printf.printf "#\\%c" c
+  | EmptyList -> print_string "()"
   | String str -> write_string str ;;
 
 let main () =
