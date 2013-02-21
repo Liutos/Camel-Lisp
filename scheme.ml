@@ -337,12 +337,14 @@ and write obj =
   | Symbol name -> print_string name
   | String str -> write_string str ;;
 
+let global_environment = empty_environment ;;
+
 let main () =
   begin
     print_string "Welcome to Bootstrap Scheme. Use ctrl-c to exit.\n";
     while true do
       print_string "> ";
-      write (eval (read stdin));
+      write (eval (read stdin) global_environment);
       print_string "\n"
     done;
     0
