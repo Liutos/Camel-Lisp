@@ -205,6 +205,7 @@ and read in_channel =
         | _ -> (prerr_string "Unknown boolean literal\n"; raise Exit)
     end
     | '(' -> read_pair in_channel
+    | '\'' -> Pair(make_symbol "quote", Pair(read in_channel, EmptyList))
     | c when isdigit c || (c = '-' && isdigit (peek in_channel)) ->
         read_fixnum in_channel c
     | c when is_double_quote c -> read_string in_channel
@@ -216,7 +217,22 @@ let is_self_evaluating = function
     Pair(_, _) | Symbol _ -> false
   | _ -> true ;;
 
-let eval exp = exp ;;
+let is_tagged_list exp tag =
+  match exp with
+    Pair(tag, _) -> true
+  | _ -> false ;;
+
+let is_quoted exp =
+  is_tagged_list exp "quote" ;;
+
+let text_of_quotation = function
+    Pair(_, Pair(obj, _)) -> obj
+  | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
+
+let eval = function
+    exp when is_self_evaluating exp -> exp
+  | exp when is_quoted exp -> text_of_quotation exp
+  | _ -> (prerr_string "cannot eval unknown expression type\n"; raise Exit) ;;
 
 let is_false obj =
   obj = Boolean false ;;
