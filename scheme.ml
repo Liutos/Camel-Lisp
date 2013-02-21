@@ -59,6 +59,7 @@ type lisp_object =
   | Character of char
   | String of string
   | EmptyList
+  | Pair of lisp_object * lisp_object
   | Boolean of bool ;;
 
 let eat_expected_string in_channel str =
@@ -127,11 +128,45 @@ let read_fixnum in_channel c =
     end
   end ;;
 
-let rec read in_channel =
+(* mutually recursive *)
+let rec read_pair in_channel =
+  begin
+    eat_whitespace in_channel;
+    let c = ref (getc in_channel)
+    in if !c = ')'
+    then EmptyList
+    else begin
+      ungetc !c in_channel;
+      let car = read in_channel
+      in begin
+        eat_whitespace in_channel;
+        c := getc in_channel;
+        if !c = '.'
+        then begin
+          c := peek in_channel;
+          if not (isspace !c)
+          then (prerr_string "dot not followed by whitespace\n"; raise Exit);
+          let cdr = read in_channel
+          in begin
+            eat_whitespace in_channel;
+            c := getc in_channel;
+            if !c != ')'
+            then (prerr_string "where was the trailing right paren?\n"; raise Exit);
+            Pair (car, cdr)
+          end
+        end
+        else begin
+          ungetc !c in_channel;
+          Pair (car, read_pair in_channel)
+        end
+      end
+    end
+  end
+
+and read in_channel =
   try
     eat_whitespace in_channel;
     match (getc in_channel) with
-    | ' ' | '\n' | '\r' | '\t' -> read in_channel
     | '#' -> begin
         match (getc in_channel) with
         | 't' -> Boolean true
@@ -142,14 +177,7 @@ let rec read in_channel =
     | c when isdigit c || (c = '-' && isdigit (peek in_channel)) ->
         read_fixnum in_channel c
     | c when c = "\"".[0] -> read_string in_channel
-    | '(' -> begin
-        eat_whitespace in_channel;
-        let c = (getc in_channel)
-        in if c = ')'
-        then EmptyList
-        else (Printf.fprintf stderr "unexpected character '%c'. Expecting ')'\n" c;
-              raise Exit)
-    end
+    | '(' -> read_pair in_channel
     | ch -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" ch; raise Exit)
   with End_of_file -> (prerr_string "read illegal state\n"; raise Exit) ;;
 
@@ -173,7 +201,18 @@ let write_string str =
     print_char dq
   end ;;
 
-let write obj =
+(* mutually recursive *)
+let rec write_pair = function
+    Pair(car, cdr) -> begin
+      write car;
+      match cdr with
+        EmptyList -> ()
+      | Pair(_, _) -> (print_char ' '; write_pair cdr)
+      | _ -> (print_string " . "; write cdr)
+    end
+  | _ -> (prerr_string "not a pair"; raise Exit)
+
+and write obj =
   match obj with
   | Fixnum num -> Printf.printf "%d" num
   | Boolean true -> print_string "#t"
@@ -182,6 +221,7 @@ let write obj =
   | Character ' ' -> print_string "#\\space"
   | Character c -> Printf.printf "#\\%c" c
   | EmptyList -> print_string "()"
+  | Pair _ -> (print_char '('; write_pair obj; print_char ')')
   | String str -> write_string str ;;
 
 let main () =
