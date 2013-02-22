@@ -343,8 +343,10 @@ let global_environment = empty_environment ;;
 let main () =
   begin
     print_string "Welcome to Bootstrap Scheme. Use ctrl-c to exit.\n";
+    flush stdout;
     while true do
       print_string "> ";
+      flush stdout;
       write (eval (read (Stream.of_channel stdin)) global_environment);
       print_string "\n"
     done;
