@@ -220,7 +220,7 @@ let is_self_evaluating = function
 
 let is_tagged_list exp tag =
   match exp with
-    Pair(tag, _) -> true
+    Pair(car, _) -> car == tag
   | _ -> false ;;
 
 let is_quoted exp =
@@ -230,7 +230,15 @@ let text_of_quotation = function
     Pair(_, Pair(obj, _)) -> obj
   | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
 
-let empty_environment = EmptyList ;;
+type environment =
+    EmptyEnvironment
+  | Environment of (lisp_object, lisp_object) Hashtbl.t * environment ;;
+
+let empty_environment = EmptyEnvironment ;;
+
+let enclosing_environment = function
+    EmptyEnvironment -> (prerr_string "Empty environment already\n"; raise Exit)
+  | Environment(_, env) -> env ;;
 
 let is_symbol = function
     Symbol _ -> true
@@ -246,53 +254,91 @@ let cdr = function
     Pair(_, cdr) -> cdr
   | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
 
-let first_frame = car ;;
+let first_frame = function
+    EmptyEnvironment -> (prerr_string "Empty environment already\n"; raise Exit)
+  | Environment(frame, _) -> frame ;;
 
-let frame_variables = car ;;
-let frame_values = cdr ;;
+let add_binding_to_frame var value frame =
+  Hashtbl.add frame var value ;;
 
-let rec lookup_variable_value var env =
-  match env with
-    EmptyList -> failwith "Unbound variable.\n"
-  | Pair(Pair(vars, vals), outer) -> begin
-      let rec aux vars vals =
-        match vars with
-          EmptyList -> raise Not_found
-        | Pair(first, rest) -> begin
-            if first == var
-            then car vals
-            else aux rest (cdr vals)
-        end
-        | _ -> (prerr_string "argument is not a Pair"; raise Exit)
-      in try
-        aux vars vals
-      with Not_found -> lookup_variable_value var outer
-  end
-  | _ -> (prerr_string "argument is not a environment(Pair)"; raise Exit) ;;
+let rec lookup_variable_value var = function
+    EmptyEnvironment -> failwith "Unbound variable.\n"
+  | Environment(frame, env) ->
+      try
+        Hashtbl.find frame var
+      with Not_found -> lookup_variable_value var env ;;
+
+let rec set_variable_value var value = function
+    EmptyEnvironment -> failwith "Unbound variable.\n"
+  | Environment(frame, env) ->
+      try
+        ignore(Hashtbl.find frame var);
+        Hashtbl.add frame var value
+      with Not_found -> set_variable_value var value env ;;
+
+let define_variable var value = function
+    EmptyEnvironment -> failwith "Empty environment.\n"
+  | Environment(frame, _) -> add_binding_to_frame var value frame ;;
+
+let extend_environment vars vals env =
+  let rec frame = Hashtbl.create 5
+  and aux vars vals =
+    match vars with
+      EmptyList -> ()
+    | Pair(var, rest) -> begin
+        Hashtbl.add frame var (car vals);
+        aux rest (cdr vals)
+    end
+    | _ -> (prerr_string "vals must be type Pair"; raise Exit)
+  in begin
+    aux vars vals;
+    Environment(frame, env)
+  end ;;
+
+let setup_environment () =
+  extend_environment EmptyList EmptyList EmptyEnvironment ;;
 
 let is_assignment exp =
   is_tagged_list exp (make_symbol "set!") ;;
 
-(* let set_variable_value var value env = *)
-(*   match env with *)
-(*     EmptyList -> failwith "unbound variable" *)
-(*   | Pair(Pair(vars, vals), outer) -> begin *)
-(*       let rec aux vars vals = *)
-(*         match vars with *)
-(*           EmptyList -> raise Not_found *)
-(*         | Pair(first, rest) -> begin *)
-(*             if first == var *)
-(*             then  *)
-(*         end *)
-(*   end *)
-(*   | _ -> (prerr_string "argument is not a environment(Pair)"; raise Exit) ;; *)
+let assignment_variable exp = car (cdr exp) ;;
+let assignment_value exp = car (cdr (cdr exp)) ;;
 
-(* let eval_assignment exp env = *)
+let is_definition exp =
+  is_tagged_list exp (make_symbol "define") ;;
 
-let eval exp env =
+let definition_variable exp = car (cdr exp) ;;
+let definition_value exp = car (cdr (cdr exp)) ;;
+
+(* mutually recursive: eval_assignment <-> eval *)
+let rec eval_assignment exp env =
+  begin
+    set_variable_value
+      (assignment_variable exp)
+      (eval (assignment_value exp) env)
+      env;
+    make_symbol "ok"
+  end
+
+and eval_definition exp env =
+  begin
+    define_variable
+      (definition_variable exp)
+      (eval (definition_value exp) env)
+      env;
+    make_symbol "ok"
+  end
+
+and eval exp env =
   match exp with
     exp when is_self_evaluating exp -> exp
   | exp when is_variable exp -> lookup_variable_value exp env
+  | exp when is_assignment exp -> begin
+      eval_assignment exp env
+  end
+  | exp when is_definition exp -> begin
+      eval_definition exp env
+  end
   | exp when is_quoted exp -> text_of_quotation exp
   | _ -> (prerr_string "cannot eval unknown expression type\n"; raise Exit) ;;
 
@@ -338,7 +384,7 @@ and write obj =
   | Symbol name -> print_string name
   | String str -> write_string str ;;
 
-let global_environment = empty_environment ;;
+let global_environment = setup_environment () ;;
 
 let main () =
   begin
