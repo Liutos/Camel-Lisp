@@ -1,4 +1,4 @@
-# Camel
+# Camel-Lisp -- A Lisp Interpreter Writen in OCaml
 
 ## Introduction
 
