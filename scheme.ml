@@ -1,5 +1,84 @@
 let input_buffers = Hashtbl.create 11 ;;
 
+(* model *)
+
+type lisp_object =
+  | Fixnum of int
+  | Character of char
+  | String of string
+  | EmptyList
+  | Pair of lisp_object * lisp_object
+  | Symbol of string
+  | Boolean of bool ;;
+
+type environment =
+    EmptyEnvironment
+  | Environment of (lisp_object, lisp_object) Hashtbl.t * environment ;;
+
+let symbol_table = Hashtbl.create 20 ;;
+
+let empty_environment = EmptyEnvironment ;;
+
+let extend_environment vars vals env =
+  let rec frame = Hashtbl.create 5
+  and aux vars vals =
+    match vars with
+      EmptyList -> ()
+    | Pair(var, rest) -> begin
+        Hashtbl.add frame var (car vals);
+        aux rest (cdr vals)
+    end
+    | _ -> (prerr_string "vals must be type Pair"; raise Exit)
+  in begin
+    aux vars vals;
+    Environment(frame, env)
+  end ;;
+
+let setup_environment () =
+  extend_environment EmptyList EmptyList EmptyEnvironment ;;
+
+let make_symbol name =
+  try
+    Hashtbl.find symbol_table name
+  with Not_found ->
+    let symbol = Symbol name
+    in begin
+      Hashtbl.add symbol_table name symbol;
+      symbol
+    end ;;
+
+let car = function
+    Pair(car, _) -> car
+  | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
+
+let cdr = function
+    Pair(_, cdr) -> cdr
+  | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
+
+let first_frame = function
+    EmptyEnvironment -> (prerr_string "Empty environment already\n"; raise Exit)
+  | Environment(frame, _) -> frame ;;
+
+let add_binding_to_frame var value frame =
+  Hashtbl.add frame var value ;;
+
+let rec lookup_variable_value var = function
+    EmptyEnvironment -> failwith "Unbound variable.\n"
+  | Environment(frame, env) ->
+      try
+        Hashtbl.find frame var
+      with Not_found -> lookup_variable_value var env ;;
+
+let rec set_variable_value var value = function
+    EmptyEnvironment -> failwith "Unbound variable.\n"
+  | Environment(frame, env) ->
+      try
+        ignore(Hashtbl.find frame var);
+        Hashtbl.add frame var value
+      with Not_found -> set_variable_value var value env ;;
+
+(* read *)
+
 let find_or_create_stack input =
   try
     Hashtbl.find input_buffers input
@@ -53,27 +132,6 @@ let is_double_quote c =
 
 let is_delimiter c =
   isspace c || c = '(' || c = ')' || is_double_quote c || c = ';' ;;
-
-type lisp_object =
-  | Fixnum of int
-  | Character of char
-  | String of string
-  | EmptyList
-  | Pair of lisp_object * lisp_object
-  | Symbol of string
-  | Boolean of bool ;;
-
-let symbol_table = Hashtbl.create 20 ;;
-
-let make_symbol name =
-  try
-    Hashtbl.find symbol_table name
-  with Not_found ->
-    let symbol = Symbol name
-    in begin
-      Hashtbl.add symbol_table name symbol;
-      symbol
-    end ;;
 
 let eat_expected_string in_stream str =
   let aux c =
@@ -214,6 +272,8 @@ and read in_stream =
     | c -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" c; raise Exit)
   with End_of_file -> (prerr_string "read illegal state\n"; raise Exit) ;;
 
+(* eval *)
+
 let is_self_evaluating = function
     Pair(_, _) | Symbol _ -> false
   | _ -> true ;;
@@ -230,12 +290,6 @@ let text_of_quotation = function
     Pair(_, Pair(obj, _)) -> obj
   | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
 
-type environment =
-    EmptyEnvironment
-  | Environment of (lisp_object, lisp_object) Hashtbl.t * environment ;;
-
-let empty_environment = EmptyEnvironment ;;
-
 let enclosing_environment = function
     EmptyEnvironment -> (prerr_string "Empty environment already\n"; raise Exit)
   | Environment(_, env) -> env ;;
@@ -246,57 +300,9 @@ let is_symbol = function
 
 let is_variable = is_symbol ;;
 
-let car = function
-    Pair(car, _) -> car
-  | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
-
-let cdr = function
-    Pair(_, cdr) -> cdr
-  | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
-
-let first_frame = function
-    EmptyEnvironment -> (prerr_string "Empty environment already\n"; raise Exit)
-  | Environment(frame, _) -> frame ;;
-
-let add_binding_to_frame var value frame =
-  Hashtbl.add frame var value ;;
-
-let rec lookup_variable_value var = function
-    EmptyEnvironment -> failwith "Unbound variable.\n"
-  | Environment(frame, env) ->
-      try
-        Hashtbl.find frame var
-      with Not_found -> lookup_variable_value var env ;;
-
-let rec set_variable_value var value = function
-    EmptyEnvironment -> failwith "Unbound variable.\n"
-  | Environment(frame, env) ->
-      try
-        ignore(Hashtbl.find frame var);
-        Hashtbl.add frame var value
-      with Not_found -> set_variable_value var value env ;;
-
 let define_variable var value = function
     EmptyEnvironment -> failwith "Empty environment.\n"
   | Environment(frame, _) -> add_binding_to_frame var value frame ;;
-
-let extend_environment vars vals env =
-  let rec frame = Hashtbl.create 5
-  and aux vars vals =
-    match vars with
-      EmptyList -> ()
-    | Pair(var, rest) -> begin
-        Hashtbl.add frame var (car vals);
-        aux rest (cdr vals)
-    end
-    | _ -> (prerr_string "vals must be type Pair"; raise Exit)
-  in begin
-    aux vars vals;
-    Environment(frame, env)
-  end ;;
-
-let setup_environment () =
-  extend_environment EmptyList EmptyList EmptyEnvironment ;;
 
 let is_assignment exp =
   is_tagged_list exp (make_symbol "set!") ;;
@@ -342,8 +348,7 @@ and eval exp env =
   | exp when is_quoted exp -> text_of_quotation exp
   | _ -> (prerr_string "cannot eval unknown expression type\n"; raise Exit) ;;
 
-let is_false obj =
-  obj = Boolean false ;;
+(* print *)
 
 let write_string str =
   let dq = "\"".[0]
@@ -385,6 +390,8 @@ and write obj =
   | String str -> write_string str ;;
 
 let global_environment = setup_environment () ;;
+
+(* toploop *)
 
 let main () =
   begin
