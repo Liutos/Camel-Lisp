@@ -353,16 +353,19 @@ let main () =
     0
   end ;;
 
+let rep () =
+  write (eval (read (Stream.of_channel stdin)) global_environment) ;;
+
 let test_repl () =
   let cases =
-    ["#t";
-     "-123";
-     "#\\c";
-     "\"asdf\"";
-     "(quote ())";
-     "(quote (0 . 1))";
-     "(quote (0 1 2 3))";
-     "(quote asdf)"]
+    ["#t ";
+     "-123 ";
+     "#\\c ";
+     "\"asdf\" ";
+     "(quote ()) ";
+     "(quote (0 . 1)) ";
+     "(quote (0 1 2 3)) ";
+     "(quote asdf) "]
   and test case = begin
     Printf.printf "%s => " case;
     flush stdout;
