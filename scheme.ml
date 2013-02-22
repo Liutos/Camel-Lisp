@@ -128,7 +128,7 @@ let read_string in_stream =
 let read_fixnum in_stream c =
   let sign = if c = '-' then -1 else (ungetc c in_stream; 1)
   and num = ref 0
-  in begin
+  in try
     let c = ref (getc in_stream)
     in begin
       while isdigit !c do
@@ -140,7 +140,7 @@ let read_fixnum in_stream c =
       then (ungetc !c in_stream; Fixnum !num)
       else (prerr_string "number not followed by delimiter\n"; raise Exit)
     end
-  end ;;
+  with Stream.Failure -> Fixnum !num ;;
 
 let is_initial = function
     'a'..'z' | 'A'..'Z' | '*' | '/' | '>' | '<' | '=' | '?' | '!' -> true
@@ -350,3 +350,21 @@ let main () =
     done;
     0
   end ;;
+
+let test_repl () =
+  let cases =
+    ["#t";
+     "-123";
+     "#\\c";
+     "\"asdf\"";
+     "(quote ())";
+     "(quote (0 . 1))";
+     "(quote (0 1 2 3))";
+     "(quote asdf)"]
+  and test case = begin
+    Printf.printf "%s => " case;
+    flush stdout;
+    write (eval (read (Stream.of_string case)) global_environment);
+    print_newline ()
+  end
+  in List.iter test cases ;;
