@@ -19,6 +19,14 @@ let symbol_table = Hashtbl.create 20 ;;
 
 let empty_environment = EmptyEnvironment ;;
 
+let car = function
+    Pair(car, _) -> car
+  | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
+
+let cdr = function
+    Pair(_, cdr) -> cdr
+  | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
+
 let extend_environment vars vals env =
   let rec frame = Hashtbl.create 5
   and aux vars vals =
@@ -46,14 +54,6 @@ let make_symbol name =
       Hashtbl.add symbol_table name symbol;
       symbol
     end ;;
-
-let car = function
-    Pair(car, _) -> car
-  | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
-
-let cdr = function
-    Pair(_, cdr) -> cdr
-  | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
 
 let first_frame = function
     EmptyEnvironment -> (prerr_string "Empty environment already\n"; raise Exit)
@@ -286,9 +286,7 @@ let is_tagged_list exp tag =
 let is_quoted exp =
   is_tagged_list exp (make_symbol "quote") ;;
 
-let text_of_quotation = function
-    Pair(_, Pair(obj, _)) -> obj
-  | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
+let text_of_quotation exp = car (cdr exp) ;;
 
 let enclosing_environment = function
     EmptyEnvironment -> (prerr_string "Empty environment already\n"; raise Exit)
