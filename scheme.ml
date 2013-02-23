@@ -207,6 +207,11 @@ let read_symbol in_stream init =
     else (Printf.fprintf stderr "symbol not followed by delimiter. Found '%c'\n" !c; raise Exit)
   end ;;
 
+let quote_symbol = make_symbol "quote" ;;
+let set_symbol = make_symbol "set!" ;;
+let define_symbol = make_symbol "define" ;;
+let ok_symbol = make_symbol "ok" ;;
+
 (* mutually recursive: read_pair <-> read *)
 let rec read_dotted_pair_cdr in_stream =
   match (peek in_stream) with
@@ -255,7 +260,7 @@ and read in_stream =
         | _ -> failwith "Unknown boolean literal\n"
     end
     | '(' -> read_pair in_stream
-    | '\'' -> Pair(make_symbol "quote", Pair(read in_stream, EmptyList))
+    | '\'' -> Pair(quote_symbol, Pair(read in_stream, EmptyList))
     | c when isdigit c || (c = '-' && isdigit (peek in_stream)) ->
         read_fixnum in_stream c
     | c when is_double_quote c -> read_string in_stream
@@ -275,7 +280,7 @@ let is_tagged_list exp tag =
   | _ -> false ;;
 
 let is_quoted exp =
-  is_tagged_list exp (make_symbol "quote") ;;
+  is_tagged_list exp quote_symbol ;;
 
 let text_of_quotation exp = car (cdr exp) ;;
 
@@ -294,13 +299,13 @@ let define_variable var value = function
   | Environment(frame, _) -> add_binding_to_frame var value frame ;;
 
 let is_assignment exp =
-  is_tagged_list exp (make_symbol "set!") ;;
+  is_tagged_list exp set_symbol ;;
 
 let assignment_variable exp = car (cdr exp) ;;
 let assignment_value exp = car (cdr (cdr exp)) ;;
 
 let is_definition exp =
-  is_tagged_list exp (make_symbol "define") ;;
+  is_tagged_list exp define_symbol ;;
 
 let definition_variable exp = car (cdr exp) ;;
 let definition_value exp = car (cdr (cdr exp)) ;;
@@ -312,7 +317,7 @@ let rec eval_assignment exp env =
       (assignment_variable exp)
       (eval (assignment_value exp) env)
       env;
-    make_symbol "ok"
+    ok_symbol
   end
 
 and eval_definition exp env =
@@ -321,7 +326,7 @@ and eval_definition exp env =
       (definition_variable exp)
       (eval (definition_value exp) env)
       env;
-    make_symbol "ok"
+    ok_symbol
   end
 
 and eval exp env =
