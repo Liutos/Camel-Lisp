@@ -1,5 +1,3 @@
-let input_buffers = Hashtbl.create 11 ;;
-
 (* model *)
 
 type lisp_object =
@@ -11,13 +9,9 @@ type lisp_object =
   | Symbol of string
   | Boolean of bool ;;
 
-type environment =
-    EmptyEnvironment
-  | Environment of (lisp_object, lisp_object) Hashtbl.t * environment ;;
-
 let symbol_table = Hashtbl.create 20 ;;
 
-let empty_environment = EmptyEnvironment ;;
+(* let empty_environment = EmptyEnvironment ;; *)
 
 let car = function
     Pair(car, _) -> car
@@ -26,6 +20,20 @@ let car = function
 let cdr = function
     Pair(_, cdr) -> cdr
   | _ -> invalid_arg "Argument is not a Pair" ;;
+
+let make_symbol name =
+  try
+    Hashtbl.find symbol_table name
+  with Not_found ->
+    let symbol = Symbol name
+    in begin
+      Hashtbl.add symbol_table name symbol;
+      symbol
+    end ;;
+
+type environment =
+    EmptyEnvironment
+  | Environment of (lisp_object, lisp_object) Hashtbl.t * environment ;;
 
 let extend_environment vars vals env =
   let rec frame = Hashtbl.create 5
@@ -45,32 +53,22 @@ let extend_environment vars vals env =
 let setup_environment () =
   extend_environment EmptyList EmptyList EmptyEnvironment ;;
 
-let make_symbol name =
-  try
-    Hashtbl.find symbol_table name
-  with Not_found ->
-    let symbol = Symbol name
-    in begin
-      Hashtbl.add symbol_table name symbol;
-      symbol
-    end ;;
-
 let first_frame = function
-    EmptyEnvironment -> invalid_arg "Empty environment already\n"
+    EmptyEnvironment -> invalid_arg "Environment is empty already"
   | Environment(frame, _) -> frame ;;
 
 let add_binding_to_frame var value frame =
   Hashtbl.add frame var value ;;
 
 let rec lookup_variable_value var = function
-    EmptyEnvironment -> failwith "Unbound variable.\n"
+    EmptyEnvironment -> failwith "Unbound variable"
   | Environment(frame, env) ->
       try
         Hashtbl.find frame var
       with Not_found -> lookup_variable_value var env ;;
 
 let rec set_variable_value var value = function
-    EmptyEnvironment -> failwith "Unbound variable.\n"
+    EmptyEnvironment -> failwith "Unbound variable"
   | Environment(frame, env) ->
       try
         ignore(Hashtbl.find frame var);
@@ -78,6 +76,8 @@ let rec set_variable_value var value = function
       with Not_found -> set_variable_value var value env ;;
 
 (* read *)
+
+let input_buffers = Hashtbl.create 11 ;;
 
 let find_or_create_stack input =
   try
@@ -112,7 +112,7 @@ let isdigit c =
 let rec eat_whitespace input_stream =
   try
     match (getc input_stream) with
-      c1 when isspace c1 -> eat_whitespace input_stream
+      c when isspace c -> eat_whitespace input_stream
     | ';' -> let c = ref (getc input_stream)
     in begin
       while !c != '\n' do
@@ -120,7 +120,7 @@ let rec eat_whitespace input_stream =
       done;
       eat_whitespace input_stream
     end
-    | c2 -> ungetc c2 input_stream
+    | c -> ungetc c input_stream
   with Stream.Failure -> () ;;
 
 let peek input_stream =
@@ -142,31 +142,23 @@ let eat_expected_string in_stream str =
 let peek_expected_delimiter in_stream =
   let c = peek in_stream
   in if not (is_delimiter c)
-  then failwith "character not followed by delimiter\n" ;;
+  then failwith "Character not followed by delimiter" ;;
 
 let read_character in_stream =
   try
-    match (getc in_stream) with
-    | 's' -> if 'p' = (peek in_stream)
-    then begin
-      eat_expected_string in_stream "pace";
-      peek_expected_delimiter in_stream;
-      Character ' '
-    end
-    else begin
-      peek_expected_delimiter in_stream;
-      Character 's'
-    end
-    | 'n' -> if 'e' = (peek in_stream)
-    then begin
-      eat_expected_string in_stream "ewline";
-      peek_expected_delimiter in_stream;
-      Character '\n'
-    end
-    else begin
-      peek_expected_delimiter in_stream;
-      Character 'n'
-    end
+    let aux next rest result alt =
+      if next = (peek in_stream)
+      then begin
+        eat_expected_string in_stream rest;
+        peek_expected_delimiter in_stream;
+        Character result
+      end else begin
+        peek_expected_delimiter in_stream;
+        Character alt
+      end
+    in match (getc in_stream) with
+    | 's' -> aux 'p' "pace" ' ' 's'
+    | 'n' -> aux 'e' "ewline" '\n' 'n'
     | c -> Character c
   with Stream.Failure ->
     invalid_arg "Incomplete character literal\n" ;;
@@ -218,7 +210,21 @@ let read_symbol in_stream init =
   end ;;
 
 (* mutually recursive: read_pair <-> read *)
-let rec read_pair in_stream =
+let rec read_dotted_pair_cdr in_stream =
+  match (peek in_stream) with
+    c when not (isspace c) -> failwith "Dot not followed by whitespace"
+  | _ -> begin
+      eat_whitespace in_stream;
+      let cdr_obj = read in_stream
+      in begin
+        eat_whitespace in_stream;
+        match (getc in_stream) with
+          ')' -> cdr_obj
+        | _ -> failwith "Where was the trailing right paren?"
+      end
+  end
+
+and read_pair in_stream =
   begin
     eat_whitespace in_stream;
     let c = ref (getc in_stream)
@@ -229,24 +235,11 @@ let rec read_pair in_stream =
       let car = read in_stream
       in begin
         eat_whitespace in_stream;
-        c := getc in_stream;
-        if !c = '.'
-        then begin
-          c := peek in_stream;
-          if not (isspace !c)
-          then invalid_arg "Dot not followed by whitespace\n";
-          let cdr = read in_stream
-          in begin
-            eat_whitespace in_stream;
-            c := getc in_stream;
-            if !c != ')'
-            then invalid_arg "Where was the trailing right paren?\n";
-            Pair (car, cdr)
-          end
-        end
-        else begin
-          ungetc !c in_stream;
-          Pair (car, read_pair in_stream)
+        match (getc in_stream) with
+          '.' -> Pair(car, read_dotted_pair_cdr in_stream)
+        | c -> begin
+            ungetc c in_stream;
+            Pair(car, read_pair in_stream)
         end
       end
     end
