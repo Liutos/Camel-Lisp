@@ -212,6 +212,9 @@ let set_symbol = make_symbol "set!" ;;
 let define_symbol = make_symbol "define" ;;
 let ok_symbol = make_symbol "ok" ;;
 
+let the_true = Boolean true ;;
+let the_false = Boolean false ;;
+
 (* mutually recursive: read_pair <-> read *)
 let rec read_dotted_pair_cdr in_stream =
   match (peek in_stream) with
@@ -254,8 +257,8 @@ and read in_stream =
     match (getc in_stream) with
     | '#' -> begin
         match (getc in_stream) with
-        | 't' -> Boolean true
-        | 'f' -> Boolean false
+        | 't' -> the_true
+        | 'f' -> the_false
         | '\\' -> read_character in_stream
         | _ -> failwith "Unknown boolean literal\n"
     end
@@ -276,7 +279,7 @@ let is_self_evaluating = function
 
 let is_tagged_list exp tag =
   match exp with
-    Pair(car, _) -> car == tag
+    Pair(car, _) -> car = tag
   | _ -> false ;;
 
 let is_quoted exp =
