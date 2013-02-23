@@ -3,7 +3,7 @@ let input_buffers = Hashtbl.create 11 ;;
 (* model *)
 
 type lisp_object =
-  | Fixnum of int
+    Fixnum of int
   | Character of char
   | String of string
   | EmptyList
@@ -21,11 +21,11 @@ let empty_environment = EmptyEnvironment ;;
 
 let car = function
     Pair(car, _) -> car
-  | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
+  | _ -> invalid_arg "Argument is not a Pair" ;;
 
 let cdr = function
     Pair(_, cdr) -> cdr
-  | _ -> (prerr_string "argument is not a Pair"; raise Exit) ;;
+  | _ -> invalid_arg "Argument is not a Pair" ;;
 
 let extend_environment vars vals env =
   let rec frame = Hashtbl.create 5
@@ -36,7 +36,7 @@ let extend_environment vars vals env =
         Hashtbl.add frame var (car vals);
         aux rest (cdr vals)
     end
-    | _ -> (prerr_string "vals must be type Pair"; raise Exit)
+    | _ -> invalid_arg "Parameter `vars` must be type Pair"
   in begin
     aux vars vals;
     Environment(frame, env)
@@ -56,7 +56,7 @@ let make_symbol name =
     end ;;
 
 let first_frame = function
-    EmptyEnvironment -> (prerr_string "Empty environment already\n"; raise Exit)
+    EmptyEnvironment -> invalid_arg "Empty environment already\n"
   | Environment(frame, _) -> frame ;;
 
 let add_binding_to_frame var value frame =
@@ -169,7 +169,7 @@ let read_character in_stream =
     end
     | c -> Character c
   with Stream.Failure ->
-    (prerr_string "incomplete character literal\n"; raise Exit) ;;
+    invalid_arg "Incomplete character literal\n" ;;
 
 let read_string in_stream =
   let buf = Buffer.create 80
@@ -196,7 +196,7 @@ let read_fixnum in_stream c =
       num := !num * sign;
       if is_delimiter !c
       then (ungetc !c in_stream; Fixnum !num)
-      else (prerr_string "number not followed by delimiter\n"; raise Exit)
+      else invalid_arg "Number not followed by delimiter\n"
     end
   with Stream.Failure -> Fixnum !num ;;
 
@@ -234,13 +234,13 @@ let rec read_pair in_stream =
         then begin
           c := peek in_stream;
           if not (isspace !c)
-          then (prerr_string "dot not followed by whitespace\n"; raise Exit);
+          then invalid_arg "Dot not followed by whitespace\n";
           let cdr = read in_stream
           in begin
             eat_whitespace in_stream;
             c := getc in_stream;
             if !c != ')'
-            then (prerr_string "where was the trailing right paren?\n"; raise Exit);
+            then invalid_arg "Where was the trailing right paren?\n";
             Pair (car, cdr)
           end
         end
@@ -261,7 +261,7 @@ and read in_stream =
         | 't' -> Boolean true
         | 'f' -> Boolean false
         | '\\' -> read_character in_stream
-        | _ -> (prerr_string "Unknown boolean literal\n"; raise Exit)
+        | _ -> invalid_arg "Unknown boolean literal\n"
     end
     | '(' -> read_pair in_stream
     | '\'' -> Pair(make_symbol "quote", Pair(read in_stream, EmptyList))
@@ -270,7 +270,7 @@ and read in_stream =
     | c when is_double_quote c -> read_string in_stream
     | c when is_initial c || ((c = '+' || c = '-') && is_delimiter (peek in_stream)) -> read_symbol in_stream c
     | c -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" c; raise Exit)
-  with End_of_file -> (prerr_string "read illegal state\n"; raise Exit) ;;
+  with End_of_file -> invalid_arg "Read illegal state\n" ;;
 
 (* eval *)
 
@@ -289,7 +289,7 @@ let is_quoted exp =
 let text_of_quotation exp = car (cdr exp) ;;
 
 let enclosing_environment = function
-    EmptyEnvironment -> (prerr_string "Empty environment already\n"; raise Exit)
+    EmptyEnvironment -> invalid_arg "Empty environment already\n"
   | Environment(_, env) -> env ;;
 
 let is_symbol = function
@@ -344,7 +344,7 @@ and eval exp env =
       eval_definition exp env
   end
   | exp when is_quoted exp -> text_of_quotation exp
-  | _ -> (prerr_string "cannot eval unknown expression type\n"; raise Exit) ;;
+  | _ -> invalid_arg "Can not eval unknown expression type\n" ;;
 
 (* print *)
 
@@ -372,7 +372,7 @@ let rec write_pair = function
       | Pair(_, _) -> (print_char ' '; write_pair cdr)
       | _ -> (print_string " . "; write cdr)
     end
-  | _ -> (prerr_string "not a pair"; raise Exit)
+  | _ -> invalid_arg "Not a pair"
 
 and write obj =
   match obj with
