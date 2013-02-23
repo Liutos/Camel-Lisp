@@ -11,8 +11,6 @@ type lisp_object =
 
 let symbol_table = Hashtbl.create 20 ;;
 
-(* let empty_environment = EmptyEnvironment ;; *)
-
 let car = function
     Pair(car, _) -> car
   | _ -> invalid_arg "Argument is not a Pair" ;;
@@ -188,7 +186,7 @@ let read_fixnum in_stream c =
       num := !num * sign;
       if is_delimiter !c
       then (ungetc !c in_stream; Fixnum !num)
-      else invalid_arg "Number not followed by delimiter\n"
+      else failwith "Number not followed by delimiter\n"
     end
   with Stream.Failure -> Fixnum !num ;;
 
@@ -254,7 +252,7 @@ and read in_stream =
         | 't' -> Boolean true
         | 'f' -> Boolean false
         | '\\' -> read_character in_stream
-        | _ -> invalid_arg "Unknown boolean literal\n"
+        | _ -> failwith "Unknown boolean literal\n"
     end
     | '(' -> read_pair in_stream
     | '\'' -> Pair(make_symbol "quote", Pair(read in_stream, EmptyList))
@@ -263,7 +261,7 @@ and read in_stream =
     | c when is_double_quote c -> read_string in_stream
     | c when is_initial c || ((c = '+' || c = '-') && is_delimiter (peek in_stream)) -> read_symbol in_stream c
     | c -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" c; raise Exit)
-  with End_of_file -> invalid_arg "Read illegal state\n" ;;
+  with End_of_file -> failwith "Read illegal state\n" ;;
 
 (* eval *)
 
@@ -356,6 +354,11 @@ let write_string str =
     print_char dq
   end ;;
 
+let write_character = function
+    '\n' -> print_string "#\\newline"
+  | ' ' -> print_string "#\\space"
+  | c -> Printf.printf "#\\%c" c ;;
+
 (* mutually recursive: write_pair <-> write *)
 let rec write_pair = function
     Pair(car, cdr) -> begin
@@ -369,20 +372,18 @@ let rec write_pair = function
 
 and write obj =
   match obj with
-  | Fixnum num -> Printf.printf "%d" num
+    Fixnum num -> Printf.printf "%d" num
   | Boolean true -> print_string "#t"
   | Boolean false -> print_string "#f"
-  | Character '\n' -> print_string "#\\newline"
-  | Character ' ' -> print_string "#\\space"
-  | Character c -> Printf.printf "#\\%c" c
+  | Character c -> write_character c
   | EmptyList -> print_string "()"
   | Pair _ -> (print_char '('; write_pair obj; print_char ')')
   | Symbol name -> print_string name
   | String str -> write_string str ;;
 
-let global_environment = setup_environment () ;;
-
 (* toploop *)
+
+let global_environment = setup_environment () ;;
 
 let main () =
   begin
