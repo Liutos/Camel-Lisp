@@ -9,8 +9,6 @@ type lisp_object =
   | Symbol of string
   | Boolean of bool ;;
 
-let symbol_table = Hashtbl.create 20 ;;
-
 let car = function
     Pair(car, _) -> car
   | _ -> invalid_arg "Argument is not a Pair" ;;
@@ -18,6 +16,11 @@ let car = function
 let cdr = function
     Pair(_, cdr) -> cdr
   | _ -> invalid_arg "Argument is not a Pair" ;;
+
+let cadr exp = car (cdr exp) ;;
+let caddr exp = car (cdr (cdr exp)) ;;
+
+let symbol_table = Hashtbl.create 20 ;;
 
 let make_symbol name =
   try
@@ -285,7 +288,7 @@ let is_tagged_list exp tag =
 let is_quoted exp =
   is_tagged_list exp quote_symbol ;;
 
-let text_of_quotation exp = car (cdr exp) ;;
+let text_of_quotation = cadr ;;
 
 let enclosing_environment = function
     EmptyEnvironment -> invalid_arg "Empty environment already\n"
@@ -304,14 +307,14 @@ let define_variable var value = function
 let is_assignment exp =
   is_tagged_list exp set_symbol ;;
 
-let assignment_variable exp = car (cdr exp) ;;
-let assignment_value exp = car (cdr (cdr exp)) ;;
+let assignment_variable = cadr ;;
+let assignment_value = caddr ;;
 
 let is_definition exp =
   is_tagged_list exp define_symbol ;;
 
-let definition_variable exp = car (cdr exp) ;;
-let definition_value exp = car (cdr (cdr exp)) ;;
+let definition_variable = cadr ;;
+let definition_value = caddr ;;
 
 (* mutually recursive: eval_assignment <-> eval *)
 let rec eval_assignment exp env =
