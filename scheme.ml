@@ -112,25 +112,28 @@ let isdigit c =
   | '0'..'9' -> true
   | _ -> false ;;
 
+let rec eat_comment input_channel =
+  match (getc input_channel) with
+  | '\n' -> ()
+  | _ -> eat_comment input_channel ;;
+
 let rec eat_whitespace input_channel =
   try
     match (getc input_channel) with
-    | c when isspace c -> eat_whitespace input_channel
-    | ';' -> let c = ref (getc input_channel)
-    in begin
-      while !c != '\n' do
-        c := getc input_channel
-      done;
-      eat_whitespace input_channel
+    | ';' -> begin
+        eat_comment input_channel;
+        eat_whitespace input_channel
     end
+    | c when isspace c -> eat_whitespace input_channel
     | c -> ungetc c input_channel
   with End_of_file -> () ;;
 
-let is_double_quote c =
-  c = "\"".[0] ;;
+let is_double_quote = function
+  | '"' -> true
+  | _ -> false ;;
 
 let is_delimiter c =
-  isspace c || c = '(' || c = ')' || is_double_quote c || c = ';' ;;
+  isspace c || c = '(' || c = ')' || c = '"' || c = ';' ;;
 
 let error_char dir c =
   begin
@@ -296,10 +299,6 @@ let is_quoted exp =
 
 let text_of_quotation = cadr ;;
 
-(* let enclosing_environment = function *)
-(*     EmptyEnvironment -> invalid_arg "Empty environment already\n" *)
-(*   | Environment(_, env) -> env ;; *)
-
 let is_symbol = function
     Symbol _ -> true
   | _ -> false ;;
@@ -307,7 +306,7 @@ let is_symbol = function
 let is_variable = is_symbol ;;
 
 let define_variable var value = function
-    EmptyEnvironment -> failwith "Empty environment.\n"
+    EmptyEnvironment -> invalid_arg "Empty environment"
   | Environment(frame, _) -> add_binding_to_frame var value frame ;;
 
 let is_assignment exp =
@@ -336,7 +335,7 @@ let if_alternative exp =
 let is_true obj =
    obj != the_false ;;
 
-(* mutually recursive: eval_assignment <-> eval *)
+(* mutually recursive: eval_assignment <-> eval <-> eval_definition *)
 let rec eval_assignment exp env =
   begin
     set_variable_value
@@ -373,18 +372,17 @@ and eval exp env =
 (* print *)
 
 let write_string str =
-  let dq = "\"".[0]
-  in begin
-    print_char dq;
+  begin
+    print_char '"';
     String.iter
       (fun c ->
         match c with
         | '\n' -> print_string "\\n"
         | '\\' -> print_string "\\\\"
-        | c when c = dq -> print_string "\\\""
+        | c when c = '"' -> print_string "\\\""
         | c -> print_char c)
       str;
-    print_char dq
+    print_char '"'
   end ;;
 
 let write_character = function
