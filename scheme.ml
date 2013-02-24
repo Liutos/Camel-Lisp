@@ -98,9 +98,9 @@ let ungetc c in_channel =
   let stack = find_or_create_stack in_channel
   in Stack.push c stack ;;
 
-let peek input_stream =
-  let c = getc input_stream
-  in (ungetc c input_stream; c) ;;
+let peek input_channel =
+  let c = getc input_channel
+  in (ungetc c input_channel; c) ;;
 
 let isspace c =
   match c with
@@ -112,18 +112,18 @@ let isdigit c =
     '0'..'9' -> true
   | _ -> false ;;
 
-let rec eat_whitespace input_stream =
+let rec eat_whitespace input_channel =
   try
-    match (getc input_stream) with
-      c when isspace c -> eat_whitespace input_stream
-    | ';' -> let c = ref (getc input_stream)
+    match (getc input_channel) with
+      c when isspace c -> eat_whitespace input_channel
+    | ';' -> let c = ref (getc input_channel)
     in begin
       while !c != '\n' do
-        c := getc input_stream
+        c := getc input_channel
       done;
-      eat_whitespace input_stream
+      eat_whitespace input_channel
     end
-    | c -> ungetc c input_stream
+    | c -> ungetc c input_channel
   with End_of_file -> () ;;
 
 let is_double_quote c =
@@ -139,61 +139,61 @@ let error_char dir c =
     raise Exit
   end ;;
 
-let eat_expected_string in_stream str =
+let eat_expected_string in_channel str =
   let aux c =
-    if c != (getc in_stream)
+    if c != (getc in_channel)
     then error_char "Unexpcted character '%c'\n" c
   in String.iter aux str ;;
 
-let peek_expected_delimiter in_stream =
-  let c = peek in_stream
+let peek_expected_delimiter in_channel =
+  let c = peek in_channel
   in if not (is_delimiter c)
   then failwith "Character not followed by delimiter" ;;
 
-let read_character in_stream =
+let read_character in_channel =
   try
     let aux next rest result alt =
-      if next = (peek in_stream)
+      if next = (peek in_channel)
       then begin
-        eat_expected_string in_stream rest;
-        peek_expected_delimiter in_stream;
+        eat_expected_string in_channel rest;
+        peek_expected_delimiter in_channel;
         Character result
       end else begin
-        peek_expected_delimiter in_stream;
+        peek_expected_delimiter in_channel;
         Character alt
       end
-    in match (getc in_stream) with
+    in match (getc in_channel) with
     | 's' -> aux 'p' "pace" ' ' 's'
     | 'n' -> aux 'e' "ewline" '\n' 'n'
     | c -> Character c
   with End_of_file ->
     invalid_arg "Incomplete character literal\n" ;;
 
-let read_string in_stream =
+let read_string in_channel =
   let buf = Buffer.create 80
-  and c = ref (getc in_stream)
+  and c = ref (getc in_channel)
   in begin
     while not (is_double_quote !c) do
-      if !c = '\\' then (c := getc in_stream; if !c = 'n' then c := '\n');
+      if !c = '\\' then (c := getc in_channel; if !c = 'n' then c := '\n');
       Buffer.add_char buf !c;
-      c := getc in_stream
+      c := getc in_channel
     done;
     String (Buffer.contents buf)
   end ;;
 
-let read_fixnum in_stream c =
-  let sign = if c = '-' then -1 else (ungetc c in_stream; 1)
+let read_fixnum in_channel c =
+  let sign = if c = '-' then -1 else (ungetc c in_channel; 1)
   and num = ref 0
   in try
-    let c = ref (getc in_stream)
+    let c = ref (getc in_channel)
     in begin
       while isdigit !c do
         num := !num * 10 + (Char.code !c) - (Char.code '0');
-        c := getc in_stream
+        c := getc in_channel
       done;
       num := !num * sign;
       if is_delimiter !c
-      then (ungetc !c in_stream; Fixnum !num)
+      then (ungetc !c in_channel; Fixnum !num)
       else failwith "Number not followed by delimiter\n"
     end
   with End_of_file -> Fixnum !num ;;
@@ -202,16 +202,16 @@ let is_initial = function
     'a'..'z' | 'A'..'Z' | '*' | '/' | '>' | '<' | '=' | '?' | '!' -> true
   | _ -> false ;;
 
-let read_symbol in_stream init =
+let read_symbol in_channel init =
   let buf = Buffer.create 10
   in let c = ref init
   in begin
     while is_initial !c || isdigit !c || !c = '+' || !c = '-' do
       Buffer.add_char buf !c;
-      c := getc in_stream
+      c := getc in_channel
     done;
     if is_delimiter !c
-    then (ungetc !c in_stream; make_symbol (Buffer.contents buf))
+    then (ungetc !c in_channel; make_symbol (Buffer.contents buf))
     else error_char "Symbol not followed by delimiter. Found '%c'\n" !c
   end ;;
 
@@ -225,58 +225,58 @@ let the_true = Boolean true ;;
 let the_false = Boolean false ;;
 
 (* mutually recursive: read_pair <-> read *)
-let rec read_dotted_pair_cdr in_stream =
-  match (peek in_stream) with
+let rec read_dotted_pair_cdr in_channel =
+  match (peek in_channel) with
     c when not (isspace c) -> failwith "Dot not followed by whitespace"
   | _ -> begin
-      eat_whitespace in_stream;
-      let cdr_obj = read in_stream
+      eat_whitespace in_channel;
+      let cdr_obj = read in_channel
       in begin
-        eat_whitespace in_stream;
-        match (getc in_stream) with
+        eat_whitespace in_channel;
+        match (getc in_channel) with
           ')' -> cdr_obj
         | _ -> failwith "Where was the trailing right paren?"
       end
   end
 
-and read_pair in_stream =
+and read_pair in_channel =
   begin
-    eat_whitespace in_stream;
-    let c = ref (getc in_stream)
+    eat_whitespace in_channel;
+    let c = ref (getc in_channel)
     in if !c = ')'
     then EmptyList
     else begin
-      ungetc !c in_stream;
-      let car = read in_stream
+      ungetc !c in_channel;
+      let car = read in_channel
       in begin
-        eat_whitespace in_stream;
-        match (getc in_stream) with
-          '.' -> Pair(car, read_dotted_pair_cdr in_stream)
+        eat_whitespace in_channel;
+        match (getc in_channel) with
+          '.' -> Pair(car, read_dotted_pair_cdr in_channel)
         | c -> begin
-            ungetc c in_stream;
-            Pair(car, read_pair in_stream)
+            ungetc c in_channel;
+            Pair(car, read_pair in_channel)
         end
       end
     end
   end
 
-and read in_stream =
+and read in_channel =
   try
-    eat_whitespace in_stream;
-    match (getc in_stream) with
+    eat_whitespace in_channel;
+    match (getc in_channel) with
     | '#' -> begin
-        match (getc in_stream) with
+        match (getc in_channel) with
         | 't' -> the_true
         | 'f' -> the_false
-        | '\\' -> read_character in_stream
+        | '\\' -> read_character in_channel
         | _ -> failwith "Unknown boolean literal\n"
     end
-    | '(' -> read_pair in_stream
-    | '\'' -> Pair(quote_symbol, Pair(read in_stream, EmptyList))
-    | c when isdigit c || (c = '-' && isdigit (peek in_stream)) ->
-        read_fixnum in_stream c
-    | c when is_double_quote c -> read_string in_stream
-    | c when is_initial c || ((c = '+' || c = '-') && is_delimiter (peek in_stream)) -> read_symbol in_stream c
+    | '(' -> read_pair in_channel
+    | '\'' -> Pair(quote_symbol, Pair(read in_channel, EmptyList))
+    | c when isdigit c || (c = '-' && isdigit (peek in_channel)) ->
+        read_fixnum in_channel c
+    | c when is_double_quote c -> read_string in_channel
+    | c when is_initial c || ((c = '+' || c = '-') && is_delimiter (peek in_channel)) -> read_symbol in_channel c
     | c -> error_char "Bad input. Unexpected '%c'\n" c
   with End_of_file -> failwith "Read illegal state\n" ;;
 
