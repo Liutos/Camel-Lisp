@@ -90,8 +90,8 @@ let find_or_create_stack input =
 
 let getc in_channel =
   let stack = find_or_create_stack in_channel
-  in if Stack.is_empty stack
-  then input_char in_channel
+  in if Stack.is_empty stack then
+    input_char in_channel
   else Stack.pop stack ;;
 
 let ungetc c in_channel =
@@ -140,24 +140,25 @@ let error_char dir c =
 
 let eat_expected_string in_channel str =
   let aux c =
-    if c != (getc in_channel)
-    then error_char "Unexpcted character '%c'\n" c
+    if c != (getc in_channel) then
+      error_char "Unexpcted character '%c'\n" c
   in String.iter aux str ;;
 
 let peek_expected_delimiter in_channel =
   let c = peek in_channel
-  in if not (is_delimiter c)
-  then failwith "Character not followed by delimiter" ;;
+  in if not (is_delimiter c) then
+    failwith "Character not followed by delimiter" ;;
 
 let read_character in_channel =
   try
     let aux next rest result alt =
-      if next = (peek in_channel)
-      then begin
-        eat_expected_string in_channel rest;
-        peek_expected_delimiter in_channel;
-        Character result
-      end else begin
+      if next = (peek in_channel) then
+        begin
+          eat_expected_string in_channel rest;
+          peek_expected_delimiter in_channel;
+          Character result
+        end
+      else begin
         peek_expected_delimiter in_channel;
         Character alt
       end
@@ -166,7 +167,7 @@ let read_character in_channel =
     | 'n' -> aux 'e' "ewline" '\n' 'n'
     | c -> Character c
   with End_of_file ->
-    invalid_arg "Incomplete character literal\n" ;;
+    invalid_arg "Incomplete character literal" ;;
 
 let read_string in_channel =
   let rec buf = Buffer.create 80
@@ -192,9 +193,9 @@ let read_fixnum in_channel c =
         c := getc in_channel
       done;
       num := !num * sign;
-      if is_delimiter !c
-      then (ungetc !c in_channel; Fixnum !num)
-      else failwith "Number not followed by delimiter\n"
+      if is_delimiter !c then
+        (ungetc !c in_channel; Fixnum !num)
+      else failwith "Number not followed by delimiter"
     end
   with End_of_file -> Fixnum !num ;;
 
@@ -210,8 +211,8 @@ let read_symbol in_channel init =
       Buffer.add_char buf !c;
       c := getc in_channel
     done;
-    if is_delimiter !c
-    then (ungetc !c in_channel; make_symbol (Buffer.contents buf))
+    if is_delimiter !c then
+      (ungetc !c in_channel; make_symbol (Buffer.contents buf))
     else error_char "Symbol not followed by delimiter. Found '%c'\n" !c
   end ;;
 
@@ -243,8 +244,8 @@ and read_pair in_channel =
   begin
     eat_whitespace in_channel;
     let c = ref (getc in_channel)
-    in if !c = ')'
-    then EmptyList
+    in if !c = ')' then
+      EmptyList
     else begin
       ungetc !c in_channel;
       let car = read in_channel
@@ -269,7 +270,7 @@ and read in_channel =
         | 't' -> the_true
         | 'f' -> the_false
         | '\\' -> read_character in_channel
-        | _ -> failwith "Unknown boolean literal\n"
+        | _ -> failwith "Unknown boolean literal"
     end
     | '(' -> read_pair in_channel
     | '\'' -> Pair(quote_symbol, Pair(read in_channel, EmptyList))
@@ -278,7 +279,7 @@ and read in_channel =
     | '"' -> read_string in_channel
     | c when is_initial c || ((c = '+' || c = '-') && is_delimiter (peek in_channel)) -> read_symbol in_channel c
     | c -> error_char "Bad input. Unexpected '%c'\n" c
-  with End_of_file -> failwith "Read illegal state\n" ;;
+  with End_of_file -> failwith "Read illegal state" ;;
 
 (* eval *)
 
@@ -360,8 +361,8 @@ and eval exp env =
   | exp when is_quoted exp -> text_of_quotation exp
   | exp when is_if exp ->
       eval
-        (if is_true (eval (if_predicate exp) env)
-        then if_consequent exp
+        (if is_true (eval (if_predicate exp) env) then
+          if_consequent exp
         else if_alternative exp)
         env
   | _ -> invalid_arg "Can not eval unknown expression type" ;;
@@ -421,7 +422,7 @@ let main () =
       print_string "> ";
       flush stdout;
       write (eval (read stdin) global_environment);
-      print_string "\n"
+      print_newline ()
     done;
     0
   end ;;
