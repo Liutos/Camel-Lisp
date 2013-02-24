@@ -128,10 +128,6 @@ let rec eat_whitespace input_channel =
     | c -> ungetc c input_channel
   with End_of_file -> () ;;
 
-let is_double_quote = function
-  | '"' -> true
-  | _ -> false ;;
-
 let is_delimiter c =
   isspace c || c = '(' || c = ')' || c = '"' || c = ';' ;;
 
@@ -173,16 +169,17 @@ let read_character in_channel =
     invalid_arg "Incomplete character literal\n" ;;
 
 let read_string in_channel =
-  let buf = Buffer.create 80
-  and c = ref (getc in_channel)
-  in begin
-    while not (is_double_quote !c) do
-      if !c = '\\' then (c := getc in_channel; if !c = 'n' then c := '\n');
-      Buffer.add_char buf !c;
-      c := getc in_channel
-    done;
-    String (Buffer.contents buf)
-  end ;;
+  let rec buf = Buffer.create 80
+  and aux () =
+    match (getc in_channel) with
+    | '"' -> String (Buffer.contents buf)
+    | '\\' -> begin
+        match (getc in_channel) with
+        | 'n' -> (Buffer.add_char buf '\n'; aux ())
+        | c -> (Buffer.add_char buf c; aux ())
+    end
+    | c -> (Buffer.add_char buf c; aux ())
+  in aux () ;;
 
 let read_fixnum in_channel c =
   let sign = if c = '-' then -1 else (ungetc c in_channel; 1)
@@ -278,7 +275,7 @@ and read in_channel =
     | '\'' -> Pair(quote_symbol, Pair(read in_channel, EmptyList))
     | c when isdigit c || (c = '-' && isdigit (peek in_channel)) ->
         read_fixnum in_channel c
-    | c when is_double_quote c -> read_string in_channel
+    | '"' -> read_string in_channel
     | c when is_initial c || ((c = '+' || c = '-') && is_delimiter (peek in_channel)) -> read_symbol in_channel c
     | c -> error_char "Bad input. Unexpected '%c'\n" c
   with End_of_file -> failwith "Read illegal state\n" ;;
