@@ -7,6 +7,7 @@ type lisp_object =
   | EmptyList
   | Pair of lisp_object * lisp_object
   | Symbol of string
+  | PrimitiveProc of (lisp_object -> lisp_object)
   | Boolean of bool ;;
 
 let car = function
@@ -333,8 +334,33 @@ let if_alternative exp =
 let is_true obj =
    obj != the_false ;;
 
+let is_application = function
+  | Pair(_, _) -> true
+  | _ -> false ;;
+
+let operator = car ;;
+let operands = cdr ;;
+
+let is_empty_list = function
+  | EmptyList -> true
+  | _ -> false ;;
+
+let is_no_operands = is_empty_list ;;
+let first_operand = car ;;
+let rest_operands = cdr ;;
+
+let fn_value = function
+  | PrimitiveProc fn -> fn
+  | _ -> invalid_arg "Argument is not of type PrimitiveProc" ;;
+
 (* mutually recursive: eval_assignment <-> eval <-> eval_definition *)
-let rec eval_assignment exp env =
+let rec list_of_values exps env =
+  if is_no_operands exps then
+    EmptyList
+  else Pair(eval (first_operand exps) env,
+            list_of_values (rest_operands exps) env)
+
+and eval_assignment exp env =
   begin
     set_variable_value
       (assignment_variable exp)
@@ -365,6 +391,10 @@ and eval exp env =
           if_consequent exp
         else if_alternative exp)
         env
+  | exp when is_application exp ->
+      let procedure = eval (operator exp) env
+      and arguments = list_of_values (operands exp) env
+      in (fn_value procedure) arguments
   | _ -> invalid_arg "Can not eval unknown expression type" ;;
 
 (* print *)
@@ -408,14 +438,31 @@ and write obj =
   | EmptyList -> print_string "()"
   | Pair _ -> (print_char '('; write_pair obj; print_char ')')
   | Symbol name -> print_string name
+  | PrimitiveProc _ -> print_string "#<procedure>"
   | String str -> write_string str ;;
 
 (* toploop *)
 
 let global_environment = setup_environment () ;;
 
+let add_proc args =
+  let rec aux = function
+      EmptyList -> 0
+    | Pair(Fixnum n, ns) -> n + aux ns
+    | _ -> invalid_arg "All arguments must be of type fixnum"
+  in Fixnum (aux args) ;;
+
+let init () =
+  begin
+    define_variable
+      (make_symbol "+")
+      (PrimitiveProc add_proc)
+      global_environment
+  end ;;
+
 let main () =
   begin
+    init ();
     print_string "Welcome to Bootstrap Scheme. Use ctrl-c to exit.\n";
     flush stdout;
     while true do
