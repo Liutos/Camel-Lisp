@@ -42,7 +42,7 @@ let extend_environment vars vals env =
   let rec frame = Hashtbl.create 5
   and aux vars vals =
     match vars with
-      EmptyList -> ()
+    | EmptyList -> ()
     | Pair(var, rest) -> begin
         Hashtbl.add frame var (car vals);
         aux rest (cdr vals)
@@ -104,18 +104,18 @@ let peek input_channel =
 
 let isspace c =
   match c with
-    ' ' | '\n' | '\r' | '\t' -> true
+  | ' ' | '\n' | '\r' | '\t' -> true
   | _ -> false ;;
 
 let isdigit c =
   match c with
-    '0'..'9' -> true
+  | '0'..'9' -> true
   | _ -> false ;;
 
 let rec eat_whitespace input_channel =
   try
     match (getc input_channel) with
-      c when isspace c -> eat_whitespace input_channel
+    | c when isspace c -> eat_whitespace input_channel
     | ';' -> let c = ref (getc input_channel)
     in begin
       while !c != '\n' do
@@ -227,14 +227,14 @@ let the_false = Boolean false ;;
 (* mutually recursive: read_pair <-> read *)
 let rec read_dotted_pair_cdr in_channel =
   match (peek in_channel) with
-    c when not (isspace c) -> failwith "Dot not followed by whitespace"
+  | c when not (isspace c) -> failwith "Dot not followed by whitespace"
   | _ -> begin
       eat_whitespace in_channel;
       let cdr_obj = read in_channel
       in begin
         eat_whitespace in_channel;
         match (getc in_channel) with
-          ')' -> cdr_obj
+        | ')' -> cdr_obj
         | _ -> failwith "Where was the trailing right paren?"
       end
   end
@@ -251,7 +251,7 @@ and read_pair in_channel =
       in begin
         eat_whitespace in_channel;
         match (getc in_channel) with
-          '.' -> Pair(car, read_dotted_pair_cdr in_channel)
+        | '.' -> Pair(car, read_dotted_pair_cdr in_channel)
         | c -> begin
             ungetc c in_channel;
             Pair(car, read_pair in_channel)
@@ -288,7 +288,7 @@ let is_self_evaluating = function
 
 let is_tagged_list exp tag =
   match exp with
-    Pair(car, _) -> car = tag
+  | Pair(car, _) -> car = tag
   | _ -> false ;;
 
 let is_quoted exp =
@@ -330,7 +330,7 @@ let if_consequent = caddr ;;
 
 let if_alternative exp =
   match (cdddr exp) with
-    EmptyList -> the_false
+  | EmptyList -> the_false
   | alt -> car alt ;;
 
 let is_true obj =
@@ -357,7 +357,7 @@ and eval_definition exp env =
 
 and eval exp env =
   match exp with
-    exp when is_self_evaluating exp -> exp
+  | exp when is_self_evaluating exp -> exp
   | exp when is_variable exp -> lookup_variable_value exp env
   | exp when is_assignment exp -> eval_assignment exp env
   | exp when is_definition exp -> eval_definition exp env
@@ -379,7 +379,7 @@ let write_string str =
     String.iter
       (fun c ->
         match c with
-          '\n' -> print_string "\\n"
+        | '\n' -> print_string "\\n"
         | '\\' -> print_string "\\\\"
         | c when c = dq -> print_string "\\\""
         | c -> print_char c)
@@ -397,7 +397,7 @@ let rec write_pair = function
     Pair(car, cdr) -> begin
       write car;
       match cdr with
-        EmptyList -> ()
+      | EmptyList -> ()
       | Pair(_, _) -> (print_char ' '; write_pair cdr)
       | _ -> (print_string " . "; write cdr)
     end
@@ -405,7 +405,7 @@ let rec write_pair = function
 
 and write obj =
   match obj with
-    Fixnum num -> Printf.printf "%d" num
+  | Fixnum num -> Printf.printf "%d" num
   | Boolean true -> print_string "#t"
   | Boolean false -> print_string "#f"
   | Character c -> write_character c
