@@ -19,6 +19,8 @@ let cdr = function
 
 let cadr exp = car (cdr exp) ;;
 let caddr exp = car (cdr (cdr exp)) ;;
+let cdddr exp = cdr (cdr (cdr exp)) ;;
+let cadddr exp = car (cdddr exp) ;;
 
 let symbol_table = Hashtbl.create 20 ;;
 
@@ -54,10 +56,6 @@ let extend_environment vars vals env =
 let setup_environment () =
   extend_environment EmptyList EmptyList EmptyEnvironment ;;
 
-let first_frame = function
-    EmptyEnvironment -> invalid_arg "Environment is empty already"
-  | Environment(frame, _) -> frame ;;
-
 let add_binding_to_frame var value frame =
   Hashtbl.add frame var value ;;
 
@@ -90,15 +88,19 @@ let find_or_create_stack input =
       stack
     end ;;
 
-let getc input_stream =
-  let stack = find_or_create_stack input_stream
+let getc in_channel =
+  let stack = find_or_create_stack in_channel
   in if Stack.is_empty stack
-  then Stream.next input_stream
+  then input_char in_channel
   else Stack.pop stack ;;
 
-let ungetc c input_stream =
-  let stack = find_or_create_stack input_stream
+let ungetc c in_channel =
+  let stack = find_or_create_stack in_channel
   in Stack.push c stack ;;
+
+let peek input_stream =
+  let c = getc input_stream
+  in (ungetc c input_stream; c) ;;
 
 let isspace c =
   match c with
@@ -122,11 +124,7 @@ let rec eat_whitespace input_stream =
       eat_whitespace input_stream
     end
     | c -> ungetc c input_stream
-  with Stream.Failure -> () ;;
-
-let peek input_stream =
-  let c = getc input_stream
-  in (ungetc c input_stream; c) ;;
+  with End_of_file -> () ;;
 
 let is_double_quote c =
   c = "\"".[0] ;;
@@ -134,10 +132,17 @@ let is_double_quote c =
 let is_delimiter c =
   isspace c || c = '(' || c = ')' || is_double_quote c || c = ';' ;;
 
+let error_char dir c =
+  begin
+    Printf.fprintf stderr dir c;
+    flush stdout;
+    raise Exit
+  end ;;
+
 let eat_expected_string in_stream str =
   let aux c =
     if c != (getc in_stream)
-    then (Printf.fprintf stderr "unexpcted character '%c'\n" c; raise Exit)
+    then error_char "Unexpcted character '%c'\n" c
   in String.iter aux str ;;
 
 let peek_expected_delimiter in_stream =
@@ -161,7 +166,7 @@ let read_character in_stream =
     | 's' -> aux 'p' "pace" ' ' 's'
     | 'n' -> aux 'e' "ewline" '\n' 'n'
     | c -> Character c
-  with Stream.Failure ->
+  with End_of_file ->
     invalid_arg "Incomplete character literal\n" ;;
 
 let read_string in_stream =
@@ -191,7 +196,7 @@ let read_fixnum in_stream c =
       then (ungetc !c in_stream; Fixnum !num)
       else failwith "Number not followed by delimiter\n"
     end
-  with Stream.Failure -> Fixnum !num ;;
+  with End_of_file -> Fixnum !num ;;
 
 let is_initial = function
     'a'..'z' | 'A'..'Z' | '*' | '/' | '>' | '<' | '=' | '?' | '!' -> true
@@ -207,13 +212,14 @@ let read_symbol in_stream init =
     done;
     if is_delimiter !c
     then (ungetc !c in_stream; make_symbol (Buffer.contents buf))
-    else (Printf.fprintf stderr "symbol not followed by delimiter. Found '%c'\n" !c; raise Exit)
+    else error_char "Symbol not followed by delimiter. Found '%c'\n" !c
   end ;;
 
 let quote_symbol = make_symbol "quote" ;;
 let set_symbol = make_symbol "set!" ;;
 let define_symbol = make_symbol "define" ;;
 let ok_symbol = make_symbol "ok" ;;
+let if_symbol = make_symbol "if" ;;
 
 let the_true = Boolean true ;;
 let the_false = Boolean false ;;
@@ -271,7 +277,7 @@ and read in_stream =
         read_fixnum in_stream c
     | c when is_double_quote c -> read_string in_stream
     | c when is_initial c || ((c = '+' || c = '-') && is_delimiter (peek in_stream)) -> read_symbol in_stream c
-    | c -> (Printf.fprintf stderr "bad input. Unexpected '%c'\n" c; raise Exit)
+    | c -> error_char "Bad input. Unexpected '%c'\n" c
   with End_of_file -> failwith "Read illegal state\n" ;;
 
 (* eval *)
@@ -290,9 +296,9 @@ let is_quoted exp =
 
 let text_of_quotation = cadr ;;
 
-let enclosing_environment = function
-    EmptyEnvironment -> invalid_arg "Empty environment already\n"
-  | Environment(_, env) -> env ;;
+(* let enclosing_environment = function *)
+(*     EmptyEnvironment -> invalid_arg "Empty environment already\n" *)
+(*   | Environment(_, env) -> env ;; *)
 
 let is_symbol = function
     Symbol _ -> true
@@ -315,6 +321,20 @@ let is_definition exp =
 
 let definition_variable = cadr ;;
 let definition_value = caddr ;;
+
+let is_if exp =
+  is_tagged_list exp if_symbol ;;
+
+let if_predicate = cadr ;;
+let if_consequent = caddr ;;
+
+let if_alternative exp =
+  match (cdddr exp) with
+    EmptyList -> the_false
+  | alt -> car alt ;;
+
+let is_true obj =
+   obj != the_false ;;
 
 (* mutually recursive: eval_assignment <-> eval *)
 let rec eval_assignment exp env =
@@ -339,14 +359,16 @@ and eval exp env =
   match exp with
     exp when is_self_evaluating exp -> exp
   | exp when is_variable exp -> lookup_variable_value exp env
-  | exp when is_assignment exp -> begin
-      eval_assignment exp env
-  end
-  | exp when is_definition exp -> begin
-      eval_definition exp env
-  end
+  | exp when is_assignment exp -> eval_assignment exp env
+  | exp when is_definition exp -> eval_definition exp env
   | exp when is_quoted exp -> text_of_quotation exp
-  | _ -> invalid_arg "Can not eval unknown expression type\n" ;;
+  | exp when is_if exp ->
+      eval
+        (if is_true (eval (if_predicate exp) env)
+        then if_consequent exp
+        else if_alternative exp)
+        env
+  | _ -> invalid_arg "Can not eval unknown expression type" ;;
 
 (* print *)
 
@@ -403,29 +425,11 @@ let main () =
     while true do
       print_string "> ";
       flush stdout;
-      write (eval (read (Stream.of_channel stdin)) global_environment);
+      write (eval (read stdin) global_environment);
       print_string "\n"
     done;
     0
   end ;;
 
 let rep () =
-  write (eval (read (Stream.of_channel stdin)) global_environment) ;;
-
-let test_repl () =
-  let cases =
-    ["#t ";
-     "-123 ";
-     "#\\c ";
-     "\"asdf\" ";
-     "(quote ()) ";
-     "(quote (0 . 1)) ";
-     "(quote (0 1 2 3)) ";
-     "(quote asdf) "]
-  and test case = begin
-    Printf.printf "%s => " case;
-    flush stdout;
-    write (eval (read (Stream.of_string case)) global_environment);
-    print_newline ()
-  end
-  in List.iter test cases ;;
+  write (eval (read stdin) global_environment) ;;
