@@ -452,13 +452,84 @@ let add_proc args =
     | _ -> invalid_arg "All arguments must be of type fixnum"
   in Fixnum (aux args) ;;
 
+(* type predicates *)
+
+let is_null_proc = function
+    Pair(EmptyList, _) -> the_true
+  | _ -> the_false ;;
+
+let is_boolean_proc = function
+    Pair(Boolean _, _) -> the_true
+  | _ -> the_false ;;
+
+let is_symbol_proc = function
+    Pair(Symbol _, _) -> the_true
+  | _ -> the_false ;;
+
+let is_integer_proc = function
+    Pair(Fixnum _, _) -> the_true
+  | _ -> the_false ;;
+
+let is_char_proc = function
+    Pair(Character _, _) -> the_true
+  | _ -> the_false ;;
+
+let is_string_proc = function
+    Pair(String _, _) -> the_true
+  | _ -> the_false ;;
+
+let is_pair_proc = function
+    Pair(Pair _, _) -> the_true
+  | _ -> the_false ;;
+
+(* type conversions *)
+
+let char_to_integer_proc = function
+    Pair(Character c, _) -> Fixnum (Char.code c)
+  | _ -> invalid_arg "Argument is not of type Character" ;;
+
+let integer_to_char_proc = function
+    Pair(Fixnum num, _) -> Character (Char.chr num)
+  | _ -> invalid_arg "Argument is not of type Fixnum" ;;
+
+let number_to_string_proc = function
+    Pair(Fixnum num, _) -> String (string_of_int num)
+  | _ -> invalid_arg "Argument is not of type Fixnum" ;;
+
+let string_to_number_proc = function
+    Pair(String str, _) -> Fixnum (int_of_string str)
+  | _ -> invalid_arg "Argument is not of type String" ;;
+
+let symbol_to_string_proc = function
+    Pair(Symbol name, _) -> String name
+  | _ -> invalid_arg "Argument is not of type Symbol" ;;
+
+let string_to_symbol_proc = function
+    Pair(String str, _) -> make_symbol str
+  | _ -> invalid_arg "Argument is not of type String" ;;
+
+let add_primitive_procedure name fn =
+  define_variable (make_symbol name) (PrimitiveProc fn) global_environment ;;
+
 let init () =
-  begin
-    define_variable
-      (make_symbol "+")
-      (PrimitiveProc add_proc)
-      global_environment
-  end ;;
+  let kvs =
+    [("+", add_proc);
+     ("null?", is_null_proc);
+     ("boolean?", is_boolean_proc);
+     ("symbol?", is_symbol_proc);
+     ("integer?", is_integer_proc);
+     ("char?", is_char_proc);
+     ("string?", is_string_proc);
+     ("pair?", is_pair_proc);
+     ("char->integer", char_to_integer_proc);
+     ("integer->char", integer_to_char_proc);
+     ("number->string", number_to_string_proc);
+     ("string->number", string_to_symbol_proc);
+     ("symbol->string", symbol_to_string_proc);
+     ("string->symbol", string_to_symbol_proc)]
+  in List.iter
+    (fun (name, fn) -> add_primitive_procedure name fn)
+    kvs ;;
 
 let main () =
   begin
