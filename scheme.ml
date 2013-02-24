@@ -8,7 +8,12 @@ type lisp_object =
   | Pair of lisp_object * lisp_object
   | Symbol of string
   | PrimitiveProc of (lisp_object -> lisp_object)
-  | Boolean of bool ;;
+  | CompoundProc of lisp_object * lisp_object * environment
+  | Boolean of bool
+
+and environment =
+    EmptyEnvironment
+  | Environment of (lisp_object, lisp_object) Hashtbl.t * environment ;;
 
 let car = function
     Pair(car, _) -> car
@@ -34,10 +39,6 @@ let make_symbol name =
       Hashtbl.add symbol_table name symbol;
       symbol
     end ;;
-
-type environment =
-    EmptyEnvironment
-  | Environment of (lisp_object, lisp_object) Hashtbl.t * environment ;;
 
 let extend_environment vars vals env =
   let rec frame = Hashtbl.create 5
@@ -222,6 +223,7 @@ let set_symbol = make_symbol "set!" ;;
 let define_symbol = make_symbol "define" ;;
 let ok_symbol = make_symbol "ok" ;;
 let if_symbol = make_symbol "if" ;;
+let lambda_symbol = make_symbol "lambda" ;;
 
 let the_true = Boolean true ;;
 let the_false = Boolean false ;;
@@ -317,8 +319,20 @@ let assignment_value = caddr ;;
 let is_definition exp =
   is_tagged_list exp define_symbol ;;
 
-let definition_variable = cadr ;;
-let definition_value = caddr ;;
+let definition_variable exp =
+  match (cadr exp) with
+  | Symbol _ -> cadr exp
+  | Pair(var, _) -> var
+  | _ -> invalid_arg "Argument is not of type Pair" ;;
+
+let make_lambda params body =
+  Pair(lambda_symbol, Pair(params, body)) ;;
+
+let definition_value exp =
+  match (cadr exp) with
+  | Symbol _ -> caddr exp
+  | Pair(_, _) -> make_lambda (cdr (cadr exp)) (cdr (cdr exp))
+  | _ -> invalid_arg "Argument is not of type Pair" ;;
 
 let is_if exp =
   is_tagged_list exp if_symbol ;;
@@ -352,6 +366,16 @@ let rest_operands = cdr ;;
 let fn_value = function
   | PrimitiveProc fn -> fn
   | _ -> invalid_arg "Argument is not of type PrimitiveProc" ;;
+
+let is_lambda exp =
+  is_tagged_list exp lambda_symbol ;;
+
+let lambda_parameters = cadr ;;
+let lambda_body exp = cdr (cdr exp) ;;
+
+(* let is_primitive_proc = function *)
+(*   | PrimitiveProc _ -> true *)
+(*   | _ -> false ;; *)
 
 (* mutually recursive: eval_assignment <-> eval <-> eval_definition *)
 let rec list_of_values exps env =
@@ -391,10 +415,27 @@ and eval exp env =
           if_consequent exp
         else if_alternative exp)
         env
-  | exp when is_application exp ->
+  | exp when is_lambda exp ->
+      let params = lambda_parameters exp
+      and body = lambda_body exp
+      in CompoundProc(params, body, env)
+  | exp when is_application exp -> begin
       let procedure = eval (operator exp) env
       and arguments = list_of_values (operands exp) env
-      in (fn_value procedure) arguments
+      in match procedure with
+      | PrimitiveProc fn -> fn arguments
+      | CompoundProc(params, body, env) ->
+          let rec new_env = extend_environment params arguments env
+          and aux = function
+              Pair(exp, EmptyList) -> eval exp new_env
+            | Pair(exp, rest) -> begin
+                ignore(eval exp new_env);
+                aux rest
+            end
+            | _ -> invalid_arg "Function body is not of type Pair"
+          in aux body
+      | _ -> invalid_arg "Unknown procedure type"
+  end
   | _ -> invalid_arg "Can not eval unknown expression type" ;;
 
 (* print *)
@@ -438,7 +479,7 @@ and write obj =
   | EmptyList -> print_string "()"
   | Pair _ -> (print_char '('; write_pair obj; print_char ')')
   | Symbol name -> print_string name
-  | PrimitiveProc _ -> print_string "#<procedure>"
+  | PrimitiveProc _ | CompoundProc _ -> print_string "#<procedure>"
   | String str -> write_string str ;;
 
 (* toploop *)
