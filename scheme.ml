@@ -1,5 +1,6 @@
 (* model *)
 
+(* mutually recursive: lisp_object <-> environment *)
 type lisp_object =
     Fixnum of int
   | Character of char
@@ -373,9 +374,10 @@ let is_lambda exp =
 let lambda_parameters = cadr ;;
 let lambda_body exp = cdr (cdr exp) ;;
 
-(* let is_primitive_proc = function *)
-(*   | PrimitiveProc _ -> true *)
-(*   | _ -> false ;; *)
+let eval_lambda exp env =
+  let params = lambda_parameters exp
+  and body = lambda_body exp
+  in CompoundProc(params, body, env) ;;
 
 (* mutually recursive: eval_assignment <-> eval <-> eval_definition *)
 let rec list_of_values exps env =
@@ -402,6 +404,13 @@ and eval_definition exp env =
     ok_symbol
   end
 
+and eval_if exp env =
+  let result =
+    if is_true (eval (if_predicate exp) env) then
+      if_consequent exp
+    else if_alternative exp
+  in eval result env
+
 and eval exp env =
   match exp with
   | exp when is_self_evaluating exp -> exp
@@ -409,16 +418,8 @@ and eval exp env =
   | exp when is_assignment exp -> eval_assignment exp env
   | exp when is_definition exp -> eval_definition exp env
   | exp when is_quoted exp -> text_of_quotation exp
-  | exp when is_if exp ->
-      eval
-        (if is_true (eval (if_predicate exp) env) then
-          if_consequent exp
-        else if_alternative exp)
-        env
-  | exp when is_lambda exp ->
-      let params = lambda_parameters exp
-      and body = lambda_body exp
-      in CompoundProc(params, body, env)
+  | exp when is_if exp -> eval_if exp env
+  | exp when is_lambda exp -> eval_lambda exp env
   | exp when is_application exp -> begin
       let procedure = eval (operator exp) env
       and arguments = list_of_values (operands exp) env
