@@ -50,13 +50,13 @@ let make_symbol name =
 let extend_environment vars vals env =
   let rec frame = Hashtbl.create 5
   and aux vars vals =
-    match vars with
-    | EmptyList -> ()
-    | Pair obj -> begin
-        Hashtbl.add frame obj.car (car vals);
-        aux obj.cdr (cdr vals)
+    match vars, vals with
+    | EmptyList, EmptyList -> ()
+    | Pair vars, Pair vals -> begin
+        Hashtbl.add frame vars.car vals.car;
+        aux vars.cdr vals.cdr
     end
-    | _ -> invalid_arg "Parameter `vars` must be type Pair"
+    | _ -> invalid_arg "The arguments must be of type EmptyList or Pair"
   in begin
     aux vars vals;
     Environment(frame, env)
@@ -111,14 +111,12 @@ let peek input_channel =
   let c = getc input_channel
   in (ungetc c input_channel; c) ;;
 
-let isspace c =
-  match c with
-  | ' ' | '\n' | '\r' | '\t' -> true
+let isspace = function
+    ' ' | '\n' | '\r' | '\t' -> true
   | _ -> false ;;
 
-let isdigit c =
-  match c with
-  | '0'..'9' -> true
+let isdigit = function
+    '0'..'9' -> true
   | _ -> false ;;
 
 let rec eat_comment input_channel =
@@ -231,6 +229,7 @@ let define_symbol = make_symbol "define" ;;
 let ok_symbol = make_symbol "ok" ;;
 let if_symbol = make_symbol "if" ;;
 let lambda_symbol = make_symbol "lambda" ;;
+let begin_symbol = make_symbol "begin" ;;
 
 let the_true = Boolean true ;;
 let the_false = Boolean false ;;
@@ -373,9 +372,9 @@ let is_no_operands = is_empty_list ;;
 let first_operand = car ;;
 let rest_operands = cdr ;;
 
-let fn_value = function
-  | PrimitiveProc fn -> fn
-  | _ -> invalid_arg "Argument is not of type PrimitiveProc" ;;
+(* let fn_value = function *)
+(*   | PrimitiveProc fn -> fn *)
+(*   | _ -> invalid_arg "Argument is not of type PrimitiveProc" ;; *)
 
 let is_lambda exp =
   is_tagged_list exp lambda_symbol ;;
@@ -387,6 +386,11 @@ let eval_lambda exp env =
   let params = lambda_parameters exp
   and body = lambda_body exp
   in CompoundProc(params, body, env) ;;
+
+let is_begin exp =
+  is_tagged_list exp begin_symbol ;;
+
+let begin_action = cdr ;;
 
 (* mutually recursive: eval_assignment <-> eval <-> eval_definition *)
 let rec list_of_values exps env =
@@ -422,6 +426,16 @@ and eval_if exp env =
     else if_alternative exp
   in eval result env
 
+and eval_begin exp env =
+  let rec aux = function
+      Pair {car = exp; cdr = EmptyList} -> eval exp env
+    | Pair {car = first; cdr = rest} -> begin
+        ignore(eval first env);
+        aux rest
+    end
+    | _ -> invalid_arg "Impossible"
+  in aux (begin_action exp)
+
 and eval exp env =
   match exp with
   | exp when is_self_evaluating exp -> exp
@@ -431,6 +445,7 @@ and eval exp env =
   | exp when is_quoted exp -> text_of_quotation exp
   | exp when is_if exp -> eval_if exp env
   | exp when is_lambda exp -> eval_lambda exp env
+  | exp when is_begin exp -> eval_begin exp env
   | exp when is_application exp -> begin
       let procedure = eval (operator exp) env
       and arguments = list_of_values (operands exp) env
