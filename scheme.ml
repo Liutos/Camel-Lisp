@@ -6,28 +6,34 @@ type lisp_object =
   | Character of char
   | String of string
   | EmptyList
-  | Pair of lisp_object * lisp_object
+  | Pair of mutable_pair
   | Symbol of string
   | PrimitiveProc of (lisp_object -> lisp_object)
   | CompoundProc of lisp_object * lisp_object * environment
   | Boolean of bool
+
+and mutable_pair = {mutable car: lisp_object; mutable cdr: lisp_object}
 
 and environment =
     EmptyEnvironment
   | Environment of (lisp_object, lisp_object) Hashtbl.t * environment ;;
 
 let car = function
-    Pair(car, _) -> car
+    Pair pair -> pair.car
   | _ -> invalid_arg "Argument is not a Pair" ;;
 
 let cdr = function
-    Pair(_, cdr) -> cdr
+    Pair pair -> pair.cdr
   | _ -> invalid_arg "Argument is not a Pair" ;;
 
 let cadr exp = car (cdr exp) ;;
-let caddr exp = car (cdr (cdr exp)) ;;
-let cdddr exp = cdr (cdr (cdr exp)) ;;
+let cddr exp = cdr (cdr exp) ;;
+let caddr exp = car (cddr exp) ;;
+let cdddr exp = cdr (cddr exp) ;;
 let cadddr exp = car (cdddr exp) ;;
+
+let make_pair a b =
+  Pair {car = a; cdr = b} ;;
 
 let symbol_table = Hashtbl.create 20 ;;
 
@@ -46,9 +52,9 @@ let extend_environment vars vals env =
   and aux vars vals =
     match vars with
     | EmptyList -> ()
-    | Pair(var, rest) -> begin
-        Hashtbl.add frame var (car vals);
-        aux rest (cdr vals)
+    | Pair obj -> begin
+        Hashtbl.add frame obj.car (car vals);
+        aux obj.cdr (cdr vals)
     end
     | _ -> invalid_arg "Parameter `vars` must be type Pair"
   in begin
@@ -256,10 +262,10 @@ and read_pair in_channel =
       in begin
         eat_whitespace in_channel;
         match (getc in_channel) with
-        | '.' -> Pair(car, read_dotted_pair_cdr in_channel)
+        | '.' -> make_pair car (read_dotted_pair_cdr in_channel)
         | c -> begin
             ungetc c in_channel;
-            Pair(car, read_pair in_channel)
+            make_pair car (read_pair in_channel)
         end
       end
     end
@@ -277,7 +283,10 @@ and read in_channel =
         | _ -> failwith "Unknown boolean literal"
     end
     | '(' -> read_pair in_channel
-    | '\'' -> Pair(quote_symbol, Pair(read in_channel, EmptyList))
+    | '\'' ->
+        make_pair
+          quote_symbol
+          (make_pair (read in_channel) EmptyList)
     | c when isdigit c || (c = '-' && isdigit (peek in_channel)) ->
         read_fixnum in_channel c
     | '"' -> read_string in_channel
@@ -288,12 +297,12 @@ and read in_channel =
 (* eval *)
 
 let is_self_evaluating = function
-    Pair(_, _) | Symbol _ -> false
+    Pair _ | Symbol _ -> false
   | _ -> true ;;
 
 let is_tagged_list exp tag =
   match exp with
-  | Pair(car, _) -> car = tag
+  | Pair {car; _} -> car = tag
   | _ -> false ;;
 
 let is_quoted exp =
@@ -323,16 +332,16 @@ let is_definition exp =
 let definition_variable exp =
   match (cadr exp) with
   | Symbol _ -> cadr exp
-  | Pair(var, _) -> var
+  | Pair obj -> obj.car
   | _ -> invalid_arg "Argument is not of type Pair" ;;
 
 let make_lambda params body =
-  Pair(lambda_symbol, Pair(params, body)) ;;
+  make_pair lambda_symbol (make_pair params body) ;;
 
 let definition_value exp =
   match (cadr exp) with
   | Symbol _ -> caddr exp
-  | Pair(_, _) -> make_lambda (cdr (cadr exp)) (cdr (cdr exp))
+  | Pair _ -> make_lambda (cdr (cadr exp)) (cdr (cdr exp))
   | _ -> invalid_arg "Argument is not of type Pair" ;;
 
 let is_if exp =
@@ -350,7 +359,7 @@ let is_true obj =
    obj != the_false ;;
 
 let is_application = function
-  | Pair(_, _) -> true
+  | Pair _ -> true
   | _ -> false ;;
 
 let operator = car ;;
@@ -383,8 +392,10 @@ let eval_lambda exp env =
 let rec list_of_values exps env =
   if is_no_operands exps then
     EmptyList
-  else Pair(eval (first_operand exps) env,
-            list_of_values (rest_operands exps) env)
+  else
+    make_pair
+      (eval (first_operand exps) env)
+      (list_of_values (rest_operands exps) env)
 
 and eval_assignment exp env =
   begin
@@ -428,8 +439,8 @@ and eval exp env =
       | CompoundProc(params, body, env) ->
           let rec new_env = extend_environment params arguments env
           and aux = function
-              Pair(exp, EmptyList) -> eval exp new_env
-            | Pair(exp, rest) -> begin
+              Pair {car = exp; cdr = EmptyList} -> eval exp new_env
+            | Pair {car = exp; cdr = rest} -> begin
                 ignore(eval exp new_env);
                 aux rest
             end
@@ -462,11 +473,11 @@ let write_character = function
 
 (* mutually recursive: write_pair <-> write *)
 let rec write_pair = function
-    Pair(car, cdr) -> begin
+    Pair {car; cdr} -> begin
       write car;
       match cdr with
       | EmptyList -> ()
-      | Pair(_, _) -> (print_char ' '; write_pair cdr)
+      | Pair _ -> (print_char ' '; write_pair cdr)
       | _ -> (print_string " . "; write cdr)
     end
   | _ -> invalid_arg "Not a pair"
@@ -492,7 +503,7 @@ let global_environment = setup_environment () ;;
 let add_proc args =
   let rec aux = function
       EmptyList -> 0
-    | Pair(Fixnum n, ns) -> n + aux ns
+    | Pair {car = Fixnum n; cdr = ns} -> n + aux ns
     | _ -> invalid_arg "All arguments must be of type fixnum"
   in Fixnum (aux args) ;;
 
@@ -500,41 +511,43 @@ let sub_proc args =
   let rec aux acc rest =
     match rest with
     | EmptyList -> acc
-    | Pair(Fixnum n, ns) -> aux (acc - n) ns
+    | Pair {car = Fixnum n; cdr = ns} -> aux (acc - n) ns
     | _ -> invalid_arg "All arguments must be of type fixnum"
   in match args with
   | EmptyList -> Fixnum 0
-  | Pair(Fixnum n, rest) -> Fixnum (aux n rest)
+  | Pair {car = Fixnum n; cdr = rest} -> Fixnum (aux n rest)
   | _ -> invalid_arg "Argument must be of type Pair" ;;
 
 let mul_proc args =
   let rec aux = function
       EmptyList -> 1
-    | Pair(Fixnum n, ns) -> n * aux ns
+    | Pair {car = Fixnum n; cdr = ns} -> n * aux ns
     | _ -> invalid_arg "Argument must be of type Fixnum"
   in Fixnum (aux args) ;;
 
 let quotient_proc args =
   match args with
-  | Pair(Fixnum a, Pair(Fixnum b, EmptyList)) -> Fixnum (a / b)
+  | Pair {car = Fixnum a; cdr = Pair {car = Fixnum b; cdr = EmptyList}} ->
+      Fixnum (a / b)
   | _ -> invalid_arg "Argument muse be a proper list contains two fixnums" ;;
 
 let remainder_proc args =
   match args with
-  | Pair(Fixnum a, Pair(Fixnum b, EmptyList)) -> Fixnum (a mod b)
+  | Pair {car = Fixnum a; cdr = Pair {car = Fixnum b; cdr = EmptyList}} ->
+      Fixnum (a mod b)
   | _ -> invalid_arg "Argument muse be a proper list contains two fixnums" ;;
 
 let is_number_equal_proc args =
   let rec aux cur rest =
     match rest with
     | EmptyList -> the_true
-    | Pair(Fixnum n, ns) ->
+    | Pair {car = Fixnum n; cdr = ns} ->
         if cur = n then
           aux n ns
         else the_false
     | _ -> invalid_arg "Argument must be of type Fixnum"
   in match args with
-  | Pair(Fixnum cur, rest) -> aux cur rest
+  | Pair {car = Fixnum cur; cdr = rest} -> aux cur rest
   | _ ->
       invalid_arg "Argument must be a proper list contains at least one fixnum" ;;
 
@@ -542,13 +555,13 @@ let is_less_than_proc args =
   let rec aux cur rest =
     match rest with
     | EmptyList -> the_true
-    | Pair(Fixnum n, ns) ->
+    | Pair {car = Fixnum n; cdr = ns} ->
         if cur < n then
           aux n ns
         else the_false
     | _ -> invalid_arg "Argument must be of type Fixnum"
   in match args with
-  | Pair(Fixnum cur, rest) -> aux cur rest
+  | Pair {car = Fixnum cur; cdr = rest} -> aux cur rest
   | _ ->
       invalid_arg "Argument must be a proper list contains at least one fixnum" ;;
 
@@ -556,84 +569,92 @@ let is_greater_than_proc args =
   let rec aux cur rest =
     match rest with
     | EmptyList -> the_true
-    | Pair(Fixnum n, ns) ->
+    | Pair {car = Fixnum n; cdr = ns} ->
         if cur > n then
           aux n ns
         else the_false
     | _ -> invalid_arg "Argument must be of type Fixnum"
   in match args with
-  | Pair(Fixnum cur, rest) -> aux cur rest
+  | Pair {car = Fixnum cur; cdr = rest} -> aux cur rest
   | _ ->
       invalid_arg "Argument must be a proper list contains at least one fixnum" ;;
 
 (* list operations *)
 
 let cons_proc = function
-    Pair(car, Pair(cdr, _)) -> Pair(car, cdr)
+    Pair {car; cdr = Pair {cdr = obj; _}} -> make_pair car obj
   | _ -> invalid_arg "Arguments must be a proper list contains two objects" ;;
 
 let car_proc = function
-    Pair(Pair(car, _), EmptyList) -> car
+    Pair {car = Pair {car; _}; cdr = EmptyList} -> car
   | _ -> invalid_arg "Arguments must be a proper list contains one Pair" ;;
 
 let cdr_proc = function
-    Pair(Pair(_, cdr), EmptyList) -> cdr
+    Pair {car = Pair {car = _; cdr}; cdr = EmptyList} -> cdr
   | _ -> invalid_arg "Arguments must be a proper list contains one Pair" ;;
+
+let set_car_proc = function
+    Pair {car = Pair obj; cdr = value} -> (obj.car <- car value; ok_symbol)
+  | _ -> invalid_arg "Arguments must be a proper list contains two objects" ;;
+
+let set_cdr_proc = function
+    Pair {car = Pair obj; cdr = value} -> (obj.cdr <- cdr value; ok_symbol)
+  | _ -> invalid_arg "Arguments must be a proper list contains two objects" ;;
 
 (* type predicates *)
 
 let is_null_proc = function
-    Pair(EmptyList, _) -> the_true
+    Pair {car = EmptyList; _} -> the_true
   | _ -> the_false ;;
 
 let is_boolean_proc = function
-    Pair(Boolean _, _) -> the_true
+    Pair {car = Boolean _; _} -> the_true
   | _ -> the_false ;;
 
 let is_symbol_proc = function
-    Pair(Symbol _, _) -> the_true
+    Pair {car = Symbol _; _} -> the_true
   | _ -> the_false ;;
 
 let is_integer_proc = function
-    Pair(Fixnum _, _) -> the_true
+    Pair {car = Fixnum _; _} -> the_true
   | _ -> the_false ;;
 
 let is_char_proc = function
-    Pair(Character _, _) -> the_true
+    Pair {car = Character _; _} -> the_true
   | _ -> the_false ;;
 
 let is_string_proc = function
-    Pair(String _, _) -> the_true
+    Pair {car = String _; _} -> the_true
   | _ -> the_false ;;
 
 let is_pair_proc = function
-    Pair(Pair _, _) -> the_true
+    Pair {car = Pair _; _} -> the_true
   | _ -> the_false ;;
 
 (* type conversions *)
 
 let char_to_integer_proc = function
-    Pair(Character c, _) -> Fixnum (Char.code c)
+    Pair {car = Character c; _} -> Fixnum (Char.code c)
   | _ -> invalid_arg "Argument is not of type Character" ;;
 
 let integer_to_char_proc = function
-    Pair(Fixnum num, _) -> Character (Char.chr num)
+    Pair {car = Fixnum num; _} -> Character (Char.chr num)
   | _ -> invalid_arg "Argument is not of type Fixnum" ;;
 
 let number_to_string_proc = function
-    Pair(Fixnum num, _) -> String (string_of_int num)
+    Pair {car = Fixnum num; _} -> String (string_of_int num)
   | _ -> invalid_arg "Argument is not of type Fixnum" ;;
 
 let string_to_number_proc = function
-    Pair(String str, _) -> Fixnum (int_of_string str)
+    Pair {car = String str; _} -> Fixnum (int_of_string str)
   | _ -> invalid_arg "Argument is not of type String" ;;
 
 let symbol_to_string_proc = function
-    Pair(Symbol name, _) -> String name
+    Pair {car = Symbol name; _} -> String name
   | _ -> invalid_arg "Argument is not of type Symbol" ;;
 
 let string_to_symbol_proc = function
-    Pair(String str, _) -> make_symbol str
+    Pair {car = String str; _} -> make_symbol str
   | _ -> invalid_arg "Argument is not of type String" ;;
 
 let add_primitive_procedure name fn =
@@ -664,7 +685,9 @@ let init () =
      (">", is_greater_than_proc);
      ("cons", cons_proc);
      ("car", car_proc);
-     ("cdr", cdr_proc)]
+     ("cdr", cdr_proc);
+     ("set-car!", set_car_proc);
+     ("set-cdr!", set_cdr_proc)]
   in List.iter
     (fun (name, fn) -> add_primitive_procedure name fn)
     kvs ;;
