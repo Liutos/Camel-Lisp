@@ -487,12 +487,98 @@ and write obj =
 
 let global_environment = setup_environment () ;;
 
+(* arithmetic operations *)
+
 let add_proc args =
   let rec aux = function
       EmptyList -> 0
     | Pair(Fixnum n, ns) -> n + aux ns
     | _ -> invalid_arg "All arguments must be of type fixnum"
   in Fixnum (aux args) ;;
+
+let sub_proc args =
+  let rec aux acc rest =
+    match rest with
+    | EmptyList -> acc
+    | Pair(Fixnum n, ns) -> aux (acc - n) ns
+    | _ -> invalid_arg "All arguments must be of type fixnum"
+  in match args with
+  | EmptyList -> Fixnum 0
+  | Pair(Fixnum n, rest) -> Fixnum (aux n rest)
+  | _ -> invalid_arg "Argument must be of type Pair" ;;
+
+let mul_proc args =
+  let rec aux = function
+      EmptyList -> 1
+    | Pair(Fixnum n, ns) -> n * aux ns
+    | _ -> invalid_arg "Argument must be of type Fixnum"
+  in Fixnum (aux args) ;;
+
+let quotient_proc args =
+  match args with
+  | Pair(Fixnum a, Pair(Fixnum b, EmptyList)) -> Fixnum (a / b)
+  | _ -> invalid_arg "Argument muse be a proper list contains two fixnums" ;;
+
+let remainder_proc args =
+  match args with
+  | Pair(Fixnum a, Pair(Fixnum b, EmptyList)) -> Fixnum (a mod b)
+  | _ -> invalid_arg "Argument muse be a proper list contains two fixnums" ;;
+
+let is_number_equal_proc args =
+  let rec aux cur rest =
+    match rest with
+    | EmptyList -> the_true
+    | Pair(Fixnum n, ns) ->
+        if cur = n then
+          aux n ns
+        else the_false
+    | _ -> invalid_arg "Argument must be of type Fixnum"
+  in match args with
+  | Pair(Fixnum cur, rest) -> aux cur rest
+  | _ ->
+      invalid_arg "Argument must be a proper list contains at least one fixnum" ;;
+
+let is_less_than_proc args =
+  let rec aux cur rest =
+    match rest with
+    | EmptyList -> the_true
+    | Pair(Fixnum n, ns) ->
+        if cur < n then
+          aux n ns
+        else the_false
+    | _ -> invalid_arg "Argument must be of type Fixnum"
+  in match args with
+  | Pair(Fixnum cur, rest) -> aux cur rest
+  | _ ->
+      invalid_arg "Argument must be a proper list contains at least one fixnum" ;;
+
+let is_greater_than_proc args =
+  let rec aux cur rest =
+    match rest with
+    | EmptyList -> the_true
+    | Pair(Fixnum n, ns) ->
+        if cur > n then
+          aux n ns
+        else the_false
+    | _ -> invalid_arg "Argument must be of type Fixnum"
+  in match args with
+  | Pair(Fixnum cur, rest) -> aux cur rest
+  | _ ->
+      invalid_arg "Argument must be a proper list contains at least one fixnum" ;;
+
+(* list operations *)
+
+let cons_proc = function
+    Pair(car, Pair(cdr, _)) -> Pair(car, cdr)
+  | _ -> invalid_arg "Arguments must be a proper list contains two objects" ;;
+
+let car_proc = function
+    Pair(Pair(car, _), EmptyList) -> car
+  | _ -> invalid_arg "Arguments must be a proper list contains one Pair" ;;
+
+let cdr_proc = function
+    Pair(Pair(_, cdr), EmptyList) -> cdr
+  | _ -> invalid_arg "Arguments must be a proper list contains one Pair" ;;
 
 (* type predicates *)
 
@@ -568,7 +654,17 @@ let init () =
      ("number->string", number_to_string_proc);
      ("string->number", string_to_symbol_proc);
      ("symbol->string", symbol_to_string_proc);
-     ("string->symbol", string_to_symbol_proc)]
+     ("string->symbol", string_to_symbol_proc);
+     ("-", sub_proc);
+     ("*", mul_proc);
+     ("quotient", quotient_proc);
+     ("remainder", remainder_proc);
+     ("=", is_number_equal_proc);
+     ("<", is_less_than_proc);
+     (">", is_greater_than_proc);
+     ("cons", cons_proc);
+     ("car", car_proc);
+     ("cdr", cdr_proc)]
   in List.iter
     (fun (name, fn) -> add_primitive_procedure name fn)
     kvs ;;
