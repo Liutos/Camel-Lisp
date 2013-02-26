@@ -754,6 +754,15 @@ let string_to_symbol_proc = function
 let add_primitive_procedure name fn =
   define_variable (make_symbol name) (PrimitiveProc fn) global_environment ;;
 
+let is_eq_proc args =
+  let obj1 = car args
+  and obj2 = cadr args
+  in match obj1, obj2 with
+  | Fixnum n, Fixnum m -> if n = m then the_true else the_false
+  | Character c, Character d ->
+      if c = d then the_true else the_false
+  | a, b -> if a == b then the_true else the_false ;;
+
 let init () =
   let kvs =
     [("+", add_proc);
@@ -781,7 +790,8 @@ let init () =
      ("car", car_proc);
      ("cdr", cdr_proc);
      ("set-car!", set_car_proc);
-     ("set-cdr!", set_cdr_proc)]
+     ("set-cdr!", set_cdr_proc);
+     ("eq?", is_eq_proc)]
   in List.iter
     (fun (name, fn) -> add_primitive_procedure name fn)
     kvs ;;
