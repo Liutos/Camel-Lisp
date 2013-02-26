@@ -230,6 +230,8 @@ let ok_symbol = make_symbol "ok" ;;
 let if_symbol = make_symbol "if" ;;
 let lambda_symbol = make_symbol "lambda" ;;
 let begin_symbol = make_symbol "begin" ;;
+let cond_symbol = make_symbol "cond" ;;
+let else_symbol = make_symbol "else" ;;
 
 let the_true = Boolean true ;;
 let the_false = Boolean false ;;
@@ -392,6 +394,49 @@ let is_begin exp =
 
 let begin_action = cdr ;;
 
+let make_if predicate consequent alternative =
+  make_pair if_symbol
+      (make_pair predicate
+         (make_pair consequent
+            (make_pair alternative EmptyList))) ;;
+
+let make_begin seq =
+  make_pair begin_symbol seq ;;
+
+let is_cond exp =
+  is_tagged_list exp cond_symbol ;;
+
+let cond_clauses = cdr ;;
+let cond_predicate = car ;;
+let cond_action = cdr ;;
+let is_cond_else_clauses clauses =
+  cond_predicate clauses = else_symbol ;;
+
+let sequence_to_exp = function
+    EmptyList -> EmptyList
+  | Pair {car; cdr = EmptyList} -> car
+  | seq -> make_begin seq ;;
+
+let rec expand_clauses = function
+    EmptyList -> the_false
+  | Pair {car; cdr} -> begin
+      if is_cond_else_clauses car then
+        if cdr = EmptyList then
+          sequence_to_exp (cond_action car)
+        else begin
+          prerr_string "else clause isn't last cond->if\n";
+          raise Exit
+        end
+      else make_if
+             (cond_predicate car)
+             (sequence_to_exp (cond_action car))
+             (expand_clauses cdr)
+  end
+  | _ -> invalid_arg "Argument is not of type EmptyList or Pair" ;;
+
+let cond_to_if exp =
+  expand_clauses (cond_clauses exp) ;;
+
 (* mutually recursive: eval_assignment <-> eval <-> eval_definition *)
 let rec list_of_values exps env =
   if is_no_operands exps then
@@ -446,6 +491,7 @@ and eval exp env =
   | exp when is_if exp -> eval_if exp env
   | exp when is_lambda exp -> eval_lambda exp env
   | exp when is_begin exp -> eval_begin exp env
+  | exp when is_cond exp -> eval (cond_to_if exp) env
   | exp when is_application exp -> begin
       let procedure = eval (operator exp) env
       and arguments = list_of_values (operands exp) env
