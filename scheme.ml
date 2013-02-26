@@ -695,6 +695,8 @@ let set_cdr_proc = function
     Pair {car = Pair obj; cdr = value} -> (obj.cdr <- cdr value; ok_symbol)
   | _ -> invalid_arg "Arguments must be a proper list contains two objects" ;;
 
+let list_proc args = args ;;
+
 (* type predicates *)
 
 let is_null_proc = function
@@ -791,7 +793,8 @@ let init () =
      ("cdr", cdr_proc);
      ("set-car!", set_car_proc);
      ("set-cdr!", set_cdr_proc);
-     ("eq?", is_eq_proc)]
+     ("eq?", is_eq_proc);
+     ("list", list_proc)]
   in List.iter
     (fun (name, fn) -> add_primitive_procedure name fn)
     kvs ;;
