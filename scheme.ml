@@ -232,6 +232,7 @@ let lambda_symbol = make_symbol "lambda" ;;
 let begin_symbol = make_symbol "begin" ;;
 let cond_symbol = make_symbol "cond" ;;
 let else_symbol = make_symbol "else" ;;
+let let_symbol = make_symbol "let" ;;
 
 let the_true = Boolean true ;;
 let the_false = Boolean false ;;
@@ -437,6 +438,37 @@ let rec expand_clauses = function
 let cond_to_if exp =
   expand_clauses (cond_clauses exp) ;;
 
+let is_let exp = is_tagged_list exp let_symbol ;;
+let make_application = make_pair ;;
+let let_bindings = cadr ;;
+
+let rec bindings_parameters = function
+    EmptyList -> EmptyList
+  | Pair {car = binding; cdr = rest} ->
+      make_pair
+        (car binding)
+        (bindings_parameters rest)
+  | _ -> invalid_arg "Impossible -- bindings_parameters" ;;
+
+let let_parameters exp = bindings_parameters (let_bindings exp) ;;
+
+let let_body = cddr ;;
+
+let rec bindings_arguments = function
+    EmptyList -> EmptyList
+  | Pair {car = binding; cdr = rest} ->
+      make_pair
+        (cadr binding)
+        (bindings_arguments rest)
+  | _ -> invalid_arg "Impossible -- bindings_parameters" ;;
+
+let let_arguments exp = bindings_arguments (let_bindings exp) ;;
+
+let let_to_application exp =
+  make_application
+    (make_lambda (let_parameters exp) (let_body exp))
+    (let_arguments exp) ;;
+
 (* mutually recursive: eval_assignment <-> eval <-> eval_definition *)
 let rec list_of_values exps env =
   if is_no_operands exps then
@@ -492,6 +524,7 @@ and eval exp env =
   | exp when is_lambda exp -> eval_lambda exp env
   | exp when is_begin exp -> eval_begin exp env
   | exp when is_cond exp -> eval (cond_to_if exp) env
+  | exp when is_let exp -> eval (let_to_application exp) env
   | exp when is_application exp -> begin
       let procedure = eval (operator exp) env
       and arguments = list_of_values (operands exp) env
