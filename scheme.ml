@@ -223,6 +223,8 @@ let read_symbol in_channel init =
     else error_char "Symbol not followed by delimiter. Found '%c'\n" !c
   end ;;
 
+(* symbol definition *)
+
 let quote_symbol = make_symbol "quote" ;;
 let set_symbol = make_symbol "set!" ;;
 let define_symbol = make_symbol "define" ;;
@@ -233,6 +235,8 @@ let begin_symbol = make_symbol "begin" ;;
 let cond_symbol = make_symbol "cond" ;;
 let else_symbol = make_symbol "else" ;;
 let let_symbol = make_symbol "let" ;;
+let and_symbol = make_symbol "and" ;;
+let or_symbol = make_symbol "or" ;;
 
 let the_true = Boolean true ;;
 let the_false = Boolean false ;;
@@ -469,6 +473,13 @@ let let_to_application exp =
     (make_lambda (let_parameters exp) (let_body exp))
     (let_arguments exp) ;;
 
+let is_and exp = is_tagged_list exp and_symbol ;;
+let is_or exp = is_tagged_list exp or_symbol ;;
+let or_tests = cdr ;;
+let and_tests = cdr ;;
+
+let is_false = (=) the_false ;;
+
 (* mutually recursive: eval_assignment <-> eval <-> eval_definition *)
 let rec list_of_values exps env =
   if is_no_operands exps then
@@ -513,6 +524,30 @@ and eval_begin exp env =
     | _ -> invalid_arg "Impossible"
   in aux (begin_action exp)
 
+and eval_and exp env =
+  let rec aux = function
+      EmptyList -> the_true
+    | Pair {car; cdr = EmptyList} -> eval car env
+    | Pair {car; cdr} ->
+        let result = eval car env
+        in if is_false result then
+          result
+        else aux cdr
+    | _ -> invalid_arg "Impossible"
+  in aux (and_tests exp)
+
+and eval_or exp env =
+  let rec aux = function
+      EmptyList -> the_false
+    | Pair {car; cdr = EmptyList} -> eval car env
+    | Pair {car; cdr} ->
+        let result = eval car env
+        in if is_true result then
+          result
+        else aux cdr
+    | _ -> invalid_arg "Impossible"
+  in aux (or_tests exp)
+
 and eval exp env =
   match exp with
   | exp when is_self_evaluating exp -> exp
@@ -525,6 +560,8 @@ and eval exp env =
   | exp when is_begin exp -> eval_begin exp env
   | exp when is_cond exp -> eval (cond_to_if exp) env
   | exp when is_let exp -> eval (let_to_application exp) env
+  | exp when is_and exp -> eval_and exp env
+  | exp when is_or exp -> eval_or exp env
   | exp when is_application exp -> begin
       let procedure = eval (operator exp) env
       and arguments = list_of_values (operands exp) env
